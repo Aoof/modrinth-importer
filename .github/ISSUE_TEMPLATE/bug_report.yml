@@ -1,0 +1,19 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: "What happened?", description: "Include what you expected instead." }
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Version }
+  - type: dropdown
+    id: source
+    attributes:
+      label: Pack source
+      options: [CurseForge, Prism / MultiMC, ATLauncher, FTB, Technic, packwiz, mods folder, Publishing]
+  - type: textarea
+    id: logs
+    attributes: { label: Output / logs, render: shell }
