@@ -1,0 +1,29 @@
+[package]
+name = "mrimport-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+directories = "6.0.0"
+futures = "0.3.34"
+hex = "0.4.3"
+keyring = "4.2.0"
+regex = "1.13.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "multipart", "stream", "query"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha1 = "0.11.0"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "fs", "time", "sync"] }
+toml = "1.2.1"
+tracing = "0.1.44"
+walkdir = "2.5.0"
+zip = "9.7.3"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+wiremock = "0.6.5"

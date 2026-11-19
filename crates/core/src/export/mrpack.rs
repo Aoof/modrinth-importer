@@ -1,0 +1,238 @@
+//! Writes Modrinth modpack (`.mrpack`) files.
+//! Format: <https://docs.modrinth.com/docs/modpacks/format/>
+
+use super::loaders::latest_loader_version;
+use crate::events::Reporter;
+use crate::model::*;
+use crate::modrinth::Modrinth;
+use crate::resolve::{Resolution, ResolvedMod};
+use crate::{Error, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::{BTreeMap, HashSet};
+use std::io::Write;
+use std::path::Path;
+use zip::write::SimpleFileOptions;
+
+#[derive(Debug, Clone)]
+pub struct ExportOptions {
+    /// Put jars that Modrinth doesn't host into `overrides/mods`.
+    pub bundle_unmatched: bool,
+    /// Also download unmatched mods that only have a URL (e.g. CurseForge CDN) and bundle them.
+    pub download_remote: bool,
+    /// Override the loader version recorded in the pack.
+    pub loader_version: Option<String>,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        Self {
+            bundle_unmatched: true,
+            download_remote: false,
+            loader_version: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Skipped {
+    pub file_name: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExportReport {
+    pub output: String,
+    pub matched_exact: usize,
+    pub matched_fuzzy: usize,
+    pub bundled: Vec<String>,
+    pub skipped: Vec<Skipped>,
+    pub overrides: usize,
+}
+
+impl ExportReport {
+    pub fn to_markdown(&self) -> String {
+        let mut s = format!(
+            "# Import report\n\n- Output: `{}`\n- Matched by hash: {}\n- Matched by name: {}\n- Bundled in overrides: {}\n- Skipped: {}\n- Config/override files: {}\n",
+            self.output, self.matched_exact, self.matched_fuzzy, self.bundled.len(), self.skipped.len(), self.overrides
+        );
+        if !self.skipped.is_empty() {
+            s.push_str("\n## Skipped mods\n\n");
+            for x in &self.skipped {
+                s.push_str(&format!("- `{}` — {}\n", x.file_name, x.reason));
+            }
+        }
+        if !self.bundled.is_empty() {
+            s.push_str("\n## Bundled (not on Modrinth)\n\n");
+            for x in &self.bundled {
+                s.push_str(&format!("- `{x}`\n"));
+            }
+        }
+        s
+    }
+}
+
+pub async fn write_mrpack(
+    pack: &ImportedPack,
+    resolved: &[ResolvedMod],
+    out: &Path,
+    opts: &ExportOptions,
+    mr: &Modrinth,
+    reporter: &Reporter,
+) -> Result<ExportReport> {
+    reporter.stage("Building .mrpack");
+    let mut report = ExportReport {
+        output: out.display().to_string(),
+        ..Default::default()
+    };
+
+    let mut deps: BTreeMap<String, String> = BTreeMap::new();
+    deps.insert("minecraft".into(), pack.mc_version.clone());
+    if let Some(key) = pack.loader.mrpack_key() {
+        let v = match opts.loader_version.clone().or(pack.loader_version.clone()) {
+            Some(v) => v,
+            None => latest_loader_version(pack.loader, &pack.mc_version)
+                .await?
+                .ok_or_else(|| Error::Invalid("no loader version available".into()))?,
+        };
+        deps.insert(key.into(), v);
+    }
+
+    let mut files = vec![];
+    let mut bundled: Vec<(String, Vec<u8>)> = vec![];
+    let mut used_paths = HashSet::new();
+    let total = resolved.len();
+
+    for (n, r) in resolved.iter().enumerate() {
+        reporter.progress(n + 1, total);
+        let e = &r.entry;
+        match &r.resolution {
+            Resolution::Matched {
+                candidate,
+                confidence,
+            } => {
+                let path = format!("mods/{}", candidate.file.filename);
+                if !used_paths.insert(path.clone()) {
+                    continue;
+                }
+                match confidence {
+                    crate::resolve::Confidence::Exact => report.matched_exact += 1,
+                    crate::resolve::Confidence::Fuzzy => report.matched_fuzzy += 1,
+                }
+                let mut env = serde_json::Map::new();
+                env.insert(
+                    "client".into(),
+                    json!(if e.client_required {
+                        "required"
+                    } else {
+                        "unsupported"
+                    }),
+                );
+                env.insert(
+                    "server".into(),
+                    json!(if e.server_required {
+                        "required"
+                    } else {
+                        "unsupported"
+                    }),
+                );
+                files.push(json!({
+                    "path": path,
+                    "hashes": { "sha1": candidate.file.sha1, "sha512": candidate.file.sha512 },
+                    "env": env,
+                    "downloads": [candidate.file.url],
+                    "fileSize": candidate.file.size,
+                }));
+            }
+            other => {
+                let reason = match other {
+                    Resolution::Ambiguous { .. } => {
+                        "several possible matches; none chosen".to_string()
+                    }
+                    Resolution::Unmatched { reason } => reason.clone(),
+                    Resolution::Matched { .. } => unreachable!(),
+                };
+                let bytes = if !opts.bundle_unmatched {
+                    None
+                } else if let Some(o) = &e.origin {
+                    Some(o.read()?)
+                } else if opts.download_remote {
+                    match &e.download_url {
+                        Some(u) => mr.download(u).await.ok(),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                match bytes {
+                    Some(b) if used_paths.insert(format!("mods/{}", e.file_name)) => {
+                        report.bundled.push(e.file_name.clone());
+                        bundled.push((format!("overrides/mods/{}", e.file_name), b));
+                    }
+                    _ => report.skipped.push(Skipped {
+                        file_name: e.file_name.clone(),
+                        reason,
+                    }),
+                }
+            }
+        }
+    }
+
+    let index = json!({
+        "formatVersion": 1,
+        "game": "minecraft",
+        "versionId": pack.version,
+        "name": pack.name,
+        "summary": pack.summary,
+        "files": files,
+        "dependencies": deps,
+    });
+
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(out)?);
+    let opts_z = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("modrinth.index.json", opts_z)?;
+    zip.write_all(&serde_json::to_vec_pretty(&index)?)?;
+    for (name, bytes) in bundled {
+        zip.start_file(name, opts_z)?;
+        zip.write_all(&bytes)?;
+    }
+    let mut seen = HashSet::new();
+    for o in &pack.overrides {
+        // Never write paths that could escape the instance directory.
+        if o.path.starts_with('/')
+            || o.path.split('/').any(|c| c == ".." || c.is_empty())
+            || !seen.insert(o.path.clone())
+        {
+            continue;
+        }
+        zip.start_file(format!("overrides/{}", o.path), opts_z)?;
+        zip.write_all(&o.origin.read()?)?;
+        report.overrides += 1;
+    }
+    zip.finish()?;
+    Ok(report)
+}
+
+/// Open a file with the OS default handler (the Modrinth App registers `.mrpack`).
+pub fn open_with_default_app(path: &Path) -> Result<()> {
+    let status = if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(path).status()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(path)
+            .status()
+    } else {
+        std::process::Command::new("xdg-open").arg(path).status()
+    }?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::Invalid(
+            "could not open the file with the default application".into(),
+        ))
+    }
+}
