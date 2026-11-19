@@ -32,6 +32,10 @@ Shared options: `--slug`, `--title`, `--summary`, `--body`, `--license` (SPDX id
 
 `auth modrinth`, `auth curseforge` (prompt hidden; or `--token`/`--key`, or pipe on stdin), `auth status`, `auth logout`.
 
+## `mrimport purge [--yes] [--dry-run]`
+
+Removes everything the app stores outside its program files: settings, caches, webview data, saved state and the credentials in your OS keychain. `--dry-run` only lists them. Without `--yes` it asks first and refuses to run non-interactively. Program files are removed by the installers' `--uninstall`.
+
 ## `mrimport self-update [--check]`
 
 Downloads the newest release binary for your platform, verifies its SHA-256 against the release's `SHA256SUMS`, and replaces the running executable.
