@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modrinth Importer</title>
+<meta name="description" content="Import mods and modpacks from CurseForge, Prism, ATLauncher and more to Modrinth. Desktop app and CLI for macOS, Linux and Windows.">
+<link rel="icon" href="icon.png">
+<style>
+  :root {
+    --bg: #fbfbfa; --text: #1a1c1e; --muted: #62696f; --line: #e3e5e6; --code: #f1f2f2; --accent: #0b8a4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111314; --text: #e6e8e9; --muted: #8b949b; --line: #272b2e; --code: #1a1d1f; --accent: #1bd96a; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 72px 24px 64px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  header img { width: 44px; height: 44px; border-radius: 10px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .lede { font-size: 24px; line-height: 1.35; letter-spacing: -0.015em; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 40px; }
+  h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 44px 0 12px; }
+  pre {
+    margin: 0 0 10px; padding: 12px 14px; background: var(--code); border: 1px solid var(--line);
+    border-radius: 8px; white-space: pre-wrap; word-break: break-all; font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .os { color: var(--muted); font-size: 14px; margin: 14px 0 6px; }
+  ul { padding: 0; margin: 0; list-style: none; }
+  li { padding: 7px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; }
+  li:last-child { border-bottom: 0; }
+  li span { color: var(--muted); font-size: 15px; text-align: right; }
+  p { margin: 0 0 12px; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  nav { display: flex; gap: 20px; flex-wrap: wrap; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.png" alt="" width="44" height="44">
+    <h1>Modrinth Importer</h1>
+  </header>
+
+  <p class="lede">Move your mods and modpacks to Modrinth.</p>
+  <p class="sub">A desktop app and command-line tool. Point it at a pack from another launcher and get a ready-to-use <code>.mrpack</code>, or publish your own mods to Modrinth.</p>
+
+  <h2>Install</h2>
+  <p class="os">macOS and Linux</p>
+  <pre>curl -fsSL https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.sh | sh</pre>
+  <p class="os">Windows (PowerShell)</p>
+  <pre>irm https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.ps1 | iex</pre>
+  <p class="os">Installs the <code>mrimport</code> command and the desktop app, checksum-verified. Or download directly from <a href="https://github.com/Aoof/modrinth-importer/releases/latest">Releases</a>.</p>
+
+  <h2>Use</h2>
+<pre>mrimport convert MyPack.zip --open</pre>
+  <p>Mods are matched to Modrinth by file hash first, then by name. Anything Modrinth doesn't host can be bundled into the pack, and you get a report of what was skipped.</p>
+
+  <h2>Reads</h2>
+  <ul>
+    <li>CurseForge <span>modpack zip, app instance</span></li>
+    <li>Prism Launcher / MultiMC <span>instance folder or zip</span></li>
+    <li>ATLauncher <span>instance folder</span></li>
+    <li>FTB App, Technic <span>instance folder</span></li>
+    <li>packwiz <span>pack folder or zip</span></li>
+    <li>Any mods folder <span>folder of jars</span></li>
+  </ul>
+
+  <h2>Publishes from</h2>
+  <ul>
+    <li>Local jars</li>
+    <li>GitHub releases</li>
+    <li>CurseForge projects you own</li>
+  </ul>
+  <p style="margin-top:12px;color:var(--muted);font-size:15px">New projects are created as drafts; already-uploaded versions are skipped.</p>
+
+  <footer>
+    <nav>
+      <a href="https://github.com/Aoof/modrinth-importer">GitHub</a>
+      <a href="https://github.com/Aoof/modrinth-importer/releases">Releases</a>
+      <a href="https://github.com/Aoof/modrinth-importer/tree/master/docs">Docs</a>
+      <a href="https://github.com/Aoof/modrinth-importer/issues">Issues</a>
+    </nav>
+    <p style="margin-top:16px">MIT licensed. Unofficial community project, not affiliated with Modrinth or CurseForge.</p>
+  </footer>
+</main>
+</body>
+</html>
