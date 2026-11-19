@@ -68,6 +68,27 @@ jobs:
           sed -i.bak "0,/^version = \".*\"/s//version = \"$V\"/" Cargo.toml
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
           rm -f Cargo.toml.bak src-tauri/tauri.conf.json.bak
+      - name: Configure Apple signing (optional)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # With these repository secrets set, tauri signs with the Developer ID
+          # certificate and notarizes. Without them the app is ad-hoc signed.
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              echo "$v=${!v}" >> "$GITHUB_ENV"
+            done
+            echo "Developer ID signing enabled"
+          else
+            echo "::warning::No Apple signing secrets; building with an ad-hoc signature (users must approve the app on first launch)."
+          fi
       - name: Build CLI
         run: cargo build --release -p mrimport-cli --target ${{ matrix.target }}
       - name: Build desktop app
