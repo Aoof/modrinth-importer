@@ -1,6 +1,6 @@
 # CLI reference
 
-All commands accept `--json` for machine-readable output.
+All commands accept `--json` for machine-readable output and `--debug-log [FILE]` to write a debug log (default `mrimport-debug.log`) that you can attach to bug reports. It never contains credentials. See [Troubleshooting](troubleshooting.md).
 
 ## `mrimport inspect <PATH>`
 
@@ -31,6 +31,10 @@ Shared options: `--slug`, `--title`, `--summary`, `--body`, `--license` (SPDX id
 ## `mrimport auth`
 
 `auth modrinth`, `auth curseforge` (prompt hidden; or `--token`/`--key`, or pipe on stdin), `auth status`, `auth logout`.
+
+## `mrimport doctor`
+
+Checks that Modrinth is reachable, shows where your Modrinth token and CurseForge key come from and whether the key's shape looks right, and tests the CurseForge key against the API. Always writes `mrimport-debug.log`.
 
 ## `mrimport purge [--yes] [--dry-run]`
 

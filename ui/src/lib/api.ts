@@ -59,6 +59,9 @@ export const api = {
   secretStatus: () => invoke<{ modrinth: boolean; curseforge: boolean }>("secret_status"),
   saveSecret: (kind: "modrinth" | "curseforge", value: string) => invoke<void>("save_secret", { kind, value }),
   clearSecret: (kind: "modrinth" | "curseforge") => invoke<void>("clear_secret", { kind }),
+  runDiagnostics: () => invoke<string>("run_diagnostics"),
+  saveDebugLog: (path: string) => invoke<void>("save_debug_log", { path }),
+  debugLogText: () => invoke<string>("debug_log_text"),
   publish: (req: PublishRequest, onEvent: (e: ProgressEvent) => void) =>
     invoke<PublishReport>("publish_project", { req, onEvent: channel(onEvent) }),
 };

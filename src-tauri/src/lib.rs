@@ -18,7 +18,9 @@ use tauri::ipc::Channel;
 type CmdResult<T> = Result<T, String>;
 
 fn err<E: std::fmt::Display>(e: E) -> String {
-    e.to_string()
+    let msg = e.to_string();
+    mrimport_core::debuglog::log(format!("app error: {msg}"));
+    msg
 }
 
 fn reporter(ch: Channel<Event>) -> Reporter {
@@ -261,6 +263,22 @@ async fn publish_project(
         .map_err(err)
 }
 
+/// Connectivity and credential check; the result is shown in Settings.
+#[tauri::command]
+async fn run_diagnostics() -> String {
+    mrimport_core::diagnostics::run(&Modrinth::new(None)).await
+}
+
+#[tauri::command]
+fn save_debug_log(path: String) -> CmdResult<()> {
+    mrimport_core::debuglog::save(&PathBuf::from(path)).map_err(err)
+}
+
+#[tauri::command]
+fn debug_log_text() -> String {
+    mrimport_core::debuglog::snapshot()
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -271,7 +289,10 @@ pub fn run() {
             secret_status,
             save_secret,
             clear_secret,
-            publish_project
+            publish_project,
+            run_diagnostics,
+            save_debug_log,
+            debug_log_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running Modrinth Importer");

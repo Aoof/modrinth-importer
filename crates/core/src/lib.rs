@@ -7,6 +7,8 @@
 
 pub mod config;
 pub mod curseforge;
+pub mod debuglog;
+pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod export;

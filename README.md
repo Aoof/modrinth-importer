@@ -83,7 +83,7 @@ In the desktop app, drop a pack onto the window, review the matches, and export.
 
 Credentials: `mrimport auth modrinth` and `mrimport auth curseforge` store them in your OS keychain. `MODRINTH_TOKEN` and `CURSEFORGE_API_KEY` environment variables also work (useful in CI).
 
-More: [CLI reference](docs/cli.md) · [Providers](docs/providers.md) · [Publishing](docs/publishing.md) · [How matching works](docs/architecture.md) · [FAQ](docs/faq.md)
+More: [CLI reference](docs/cli.md) · [Providers](docs/providers.md) · [Publishing](docs/publishing.md) · [How matching works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [FAQ](docs/faq.md)
 
 ## Build from source
 

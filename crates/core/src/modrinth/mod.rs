@@ -1,6 +1,6 @@
 //! Minimal Modrinth API v2 client.
 
-use crate::{Error, Result};
+use crate::{debuglog, Error, Result};
 use reqwest::{header, Client, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -126,8 +126,23 @@ impl Modrinth {
     async fn send(&self, build: impl Fn() -> reqwest::RequestBuilder) -> Result<Response> {
         let mut attempt = 0;
         loop {
-            let resp = build().send().await?;
+            let req = build().build()?;
+            let label = format!("{} {}", req.method(), req.url());
+            let started = std::time::Instant::now();
+            let resp = self.http.execute(req).await.map_err(|e| {
+                debuglog::log(format!("Modrinth {label} -> request failed: {e}"));
+                Error::from(e)
+            })?;
             let status = resp.status();
+            debuglog::log(format!(
+                "Modrinth {label} -> {} ({} ms) ratelimit-remaining={}",
+                status.as_u16(),
+                started.elapsed().as_millis(),
+                resp.headers()
+                    .get("x-ratelimit-remaining")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-")
+            ));
             if (status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()) && attempt < 5
             {
                 let wait = resp
@@ -143,11 +158,11 @@ impl Modrinth {
             }
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(Error::Api {
-                    provider: "Modrinth",
-                    status: status.as_u16(),
-                    body,
-                });
+                debuglog::log(format!(
+                    "Modrinth {label} error body: {}",
+                    debuglog::snippet(&body)
+                ));
+                return Err(Error::api("Modrinth", status.as_u16(), body));
             }
             return Ok(resp);
         }
@@ -247,6 +262,13 @@ impl Modrinth {
             })
             .await?;
         Ok(r.json::<SearchResponse>().await?.hits)
+    }
+
+    /// Reachability check (a tiny, cacheable public endpoint).
+    pub async fn ping(&self) -> Result<()> {
+        self.send(|| self.req(reqwest::Method::GET, "/tag/loader"))
+            .await
+            .map(|_| ())
     }
 
     pub async fn current_user_id(&self) -> Result<String> {

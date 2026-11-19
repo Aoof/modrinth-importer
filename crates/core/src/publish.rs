@@ -170,11 +170,13 @@ pub async fn releases_from_github(repo: &str, d: &ReleaseDefaults) -> Result<Vec
     }
     let r = req.send().await?;
     if !r.status().is_success() {
-        return Err(Error::Api {
-            provider: "GitHub",
-            status: r.status().as_u16(),
-            body: r.text().await.unwrap_or_default(),
-        });
+        let status = r.status().as_u16();
+        let body = r.text().await.unwrap_or_default();
+        crate::debuglog::log(format!(
+            "GitHub releases -> {status}: {}",
+            crate::debuglog::snippet(&body)
+        ));
+        return Err(Error::api("GitHub", status, body));
     }
     let releases: Vec<serde_json::Value> = r.json().await?;
     let mut out = vec![];

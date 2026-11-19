@@ -43,6 +43,20 @@ pub fn get_secret(s: Secret) -> Option<String> {
         .ok()
 }
 
+/// Like [`get_secret`], also reporting where the value came from.
+pub fn secret_source(s: Secret) -> Option<(String, &'static str)> {
+    if let Ok(v) = std::env::var(s.env()) {
+        if !v.trim().is_empty() {
+            return Some((v, "environment variable"));
+        }
+    }
+    keyring::Entry::new(SERVICE, s.account())
+        .ok()?
+        .get_password()
+        .ok()
+        .map(|v| (v, "OS keychain"))
+}
+
 pub fn set_secret(s: Secret, value: &str) -> Result<()> {
     keyring::Entry::new(SERVICE, s.account())
         .and_then(|e| e.set_password(value))
