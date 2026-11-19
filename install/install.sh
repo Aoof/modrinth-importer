@@ -120,6 +120,16 @@ if [ "$WANT_GUI" -eq 1 ]; then
     cp -R "$MNT/Modrinth Importer.app" "$APP_DIR/"
     hdiutil detach -quiet "$MNT"
     xattr -dr com.apple.quarantine "$APP_DIR/Modrinth Importer.app" 2>/dev/null || true
+    # Developer build: seal the bundle with a local ad-hoc signature so Gatekeeper
+    # doesn't report it as damaged (no Apple Developer ID is involved).
+    if command -v codesign >/dev/null 2>&1; then
+      if codesign --force --deep --sign - "$APP_DIR/Modrinth Importer.app" >/dev/null 2>&1; then
+        say "Signed app locally (ad-hoc)."
+      else
+        say "Note: could not sign the app; if macOS reports it as damaged, run:"
+        say "  xattr -dr com.apple.quarantine \"$APP_DIR/Modrinth Importer.app\""
+      fi
+    fi
     say "Installed app: $APP_DIR/Modrinth Importer.app"
   else
     mkdir -p "$APP_DIR" "$(dirname "$DESKTOP_FILE")" "$(dirname "$ICON_FILE")"
