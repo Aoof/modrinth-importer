@@ -6,7 +6,7 @@
 
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const SERVICE: &str = "modrinth-importer";
 
@@ -105,4 +105,103 @@ pub fn default_modrinth_app_dir() -> Option<PathBuf> {
     let base = directories::BaseDirs::new()?;
     // Modrinth App stores data in a "ModrinthApp" folder under the OS app-data dir.
     Some(base.data_dir().join("ModrinthApp"))
+}
+
+/// Bundle identifier the desktop app uses for its own data directories.
+const APP_ID: &str = "com.aoof.modrinthimporter";
+
+fn is_ours(p: &Path) -> bool {
+    p.file_name()
+        .map(|n| {
+            n.to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("modrinthimporter")
+        })
+        .unwrap_or(false)
+        && p.components().count() >= 3
+}
+
+/// Every file or directory this tool may have created outside its install
+/// location (settings, caches, webview data, saved state) that exists now.
+pub fn local_data_paths() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = vec![];
+    if let Some(p) = directories::ProjectDirs::from("com", "Aoof", "ModrinthImporter") {
+        v.extend(
+            [
+                p.config_dir(),
+                p.data_dir(),
+                p.data_local_dir(),
+                p.cache_dir(),
+            ]
+            .map(Path::to_path_buf),
+        );
+    }
+    if let Some(b) = directories::BaseDirs::new() {
+        for d in [
+            b.config_dir(),
+            b.data_dir(),
+            b.data_local_dir(),
+            b.cache_dir(),
+        ] {
+            v.push(d.join(APP_ID));
+        }
+        if cfg!(target_os = "macos") {
+            let lib = b.home_dir().join("Library");
+            for d in ["WebKit", "HTTPStorages", "Logs", "Caches"] {
+                v.push(lib.join(d).join(APP_ID));
+            }
+            v.push(lib.join("Preferences").join(format!("{APP_ID}.plist")));
+            v.push(
+                lib.join("Saved Application State")
+                    .join(format!("{APP_ID}.savedState")),
+            );
+        }
+    }
+    v.sort();
+    v.dedup();
+    // macOS is case-insensitive by default: skip entries that are the same on disk.
+    v.retain(|p| p.exists() && is_ours(p));
+    let mut seen = std::collections::HashSet::new();
+    v.retain(|p| {
+        std::fs::canonicalize(p)
+            .map(|c| seen.insert(c))
+            .unwrap_or(true)
+    });
+    v
+}
+
+/// Remove everything [`local_data_paths`] lists, plus stored credentials.
+/// Returns the paths that were removed.
+pub fn purge_local_data() -> Result<Vec<PathBuf>> {
+    let mut removed = vec![];
+    for p in local_data_paths() {
+        if !p.exists() {
+            continue; // already gone (case-insensitive duplicate)
+        }
+        if p.is_dir() {
+            std::fs::remove_dir_all(&p)?;
+        } else {
+            std::fs::remove_file(&p)?;
+        }
+        // Tidy an empty vendor folder such as `%APPDATA%\Aoof` (never removes non-empty dirs).
+        if let Some(parent) = p.parent() {
+            if parent.file_name().is_some_and(|n| n == "Aoof") {
+                let _ = std::fs::remove_dir(parent);
+            }
+        }
+        removed.push(p);
+    }
+    Ok(removed)
+}
+
+/// Delete both stored credentials; returns how many existed.
+pub fn purge_secrets() -> usize {
+    [Secret::ModrinthToken, Secret::CurseForgeKey]
+        .into_iter()
+        .filter(|s| {
+            keyring::Entry::new(SERVICE, s.account())
+                .map(|e| e.delete_credential().is_ok())
+                .unwrap_or(false)
+        })
+        .count()
 }

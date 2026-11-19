@@ -8,7 +8,8 @@
 #   --gui-only        install only the desktop app
 #   --version X.Y.Z   install a specific release instead of the latest
 #   --system          install the CLI to /usr/local/bin (uses sudo if needed)
-#   --uninstall       remove everything this script installed
+#   --uninstall       remove the CLI, the app, settings, caches and stored credentials
+#   --keep-data       with --uninstall: keep settings and credentials
 set -eu
 
 REPO="Aoof/modrinth-importer"
@@ -17,6 +18,7 @@ WANT_GUI=1
 VERSION=""
 SYSTEM=0
 UNINSTALL=0
+KEEP_DATA=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -25,7 +27,8 @@ while [ $# -gt 0 ]; do
     --version) VERSION="${2:?--version needs a value}"; shift ;;
     --system) SYSTEM=1 ;;
     --uninstall) UNINSTALL=1 ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --keep-data) KEEP_DATA=1 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -55,6 +58,8 @@ if [ "$OS" = Darwin ]; then
 else
   APP_DIR="$HOME/.local/bin"
 fi
+# Advanced: install/remove the desktop app somewhere else.
+[ -z "${MRIMPORT_APPS_DIR:-}" ] || APP_DIR="$MRIMPORT_APPS_DIR"
 DESKTOP_FILE="$HOME/.local/share/applications/modrinth-importer.desktop"
 ICON_FILE="$HOME/.local/share/icons/modrinth-importer.png"
 
@@ -63,24 +68,92 @@ can_write() { d=$1; while [ ! -e "$d" ]; do d=$(dirname "$d"); done; [ -w "$d" ]
 run_cli_dir() { if can_write "$CLI_DIR"; then "$@"; else sudo "$@"; fi; }
 
 if [ "$UNINSTALL" -eq 1 ]; then
-  run_cli_dir rm -f "$CLI_DIR/mrimport"
-  if [ "$OS" = Darwin ]; then
-    rm -rf "/Applications/Modrinth Importer.app" "$HOME/Applications/Modrinth Importer.app" 2>/dev/null || sudo rm -rf "/Applications/Modrinth Importer.app"
-  else
-    rm -f "$APP_DIR/ModrinthImporter.AppImage" "$DESKTOP_FILE" "$ICON_FILE"
+  REMOVED=0
+  gone() { say "  removed $1"; REMOVED=$((REMOVED + 1)); }
+  rm_any() { # remove a path, using sudo only if its folder isn't writable
+    [ -e "$1" ] || return 0
+    if [ -w "$(dirname "$1")" ]; then rm -rf "$1"; else sudo rm -rf "$1"; fi
+    gone "$1"
+  }
+
+  # Settings, caches, webview data and keychain credentials. The CLI knows exactly
+  # what it created; without it, fall back to the same list built in here.
+  purge_fallback() {
+    ID=com.aoof.modrinthimporter
+    if [ "$OS" = Darwin ]; then
+      for p in \
+        "$HOME/Library/Application Support/$ID" "$HOME/Library/Application Support/com.Aoof.ModrinthImporter" \
+        "$HOME/Library/Caches/$ID" "$HOME/Library/Caches/com.Aoof.ModrinthImporter" \
+        "$HOME/Library/WebKit/$ID" "$HOME/Library/HTTPStorages/$ID" "$HOME/Library/Logs/$ID" \
+        "$HOME/Library/Preferences/$ID.plist" "$HOME/Library/Saved Application State/$ID.savedState"; do
+        rm_any "$p"
+      done
+      if command -v security >/dev/null 2>&1; then
+        for a in modrinth-token curseforge-api-key; do
+          if security delete-generic-password -s modrinth-importer -a "$a" >/dev/null 2>&1; then gone "keychain item $a"; fi
+        done
+      fi
+    else
+      for base in "${XDG_DATA_HOME:-$HOME/.local/share}" "${XDG_CACHE_HOME:-$HOME/.cache}" "${XDG_CONFIG_HOME:-$HOME/.config}"; do
+        rm_any "$base/$ID"
+        rm_any "$base/modrinthimporter"
+      done
+      if command -v secret-tool >/dev/null 2>&1; then
+        for a in modrinth-token curseforge-api-key; do
+          if secret-tool clear service modrinth-importer username "$a" >/dev/null 2>&1; then gone "keyring item $a"; fi
+        done
+      fi
+    fi
+  }
+
+  if [ "$KEEP_DATA" -eq 0 ]; then
+    CLI_BIN=""
+    for c in "$CLI_DIR/mrimport" "$HOME/.local/bin/mrimport" /usr/local/bin/mrimport; do
+      if [ -x "$c" ]; then CLI_BIN=$c; break; fi
+    done
+    if [ -n "$CLI_BIN" ] && "$CLI_BIN" purge --yes; then
+      :
+    else
+      purge_fallback
+    fi
   fi
-  say "Modrinth Importer removed."
+
+  # Program files.
+  for d in "$CLI_DIR" "$HOME/.local/bin" /usr/local/bin; do
+    rm_any "$d/mrimport"
+    rm_any "$d/mrimport.new"
+  done
+  if [ "$OS" = Darwin ]; then
+    if [ -n "${MRIMPORT_APPS_DIR:-}" ]; then
+      rm_any "$MRIMPORT_APPS_DIR/Modrinth Importer.app"
+    else
+      rm_any "/Applications/Modrinth Importer.app"
+      rm_any "$HOME/Applications/Modrinth Importer.app"
+    fi
+  else
+    rm_any "$APP_DIR/ModrinthImporter.AppImage"
+    rm_any "$DESKTOP_FILE"
+    rm_any "$ICON_FILE"
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database "$(dirname "$DESKTOP_FILE")" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [ "$REMOVED" -eq 0 ]; then say "Nothing to remove."; else say "Modrinth Importer removed ($REMOVED items). Nothing else was installed: no PATH or shell-profile edits to undo."; fi
   exit 0
 fi
 
 need curl
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else need shasum; SHA="shasum -a 256"; fi
 
-if [ -n "$VERSION" ]; then
-  BASE="https://github.com/$REPO/releases/download/v${VERSION#v}"
-else
-  BASE="https://github.com/$REPO/releases/latest/download"
+# Releases are published as pre-releases (developer builds), which GitHub's
+# "latest" alias skips, so look up the newest release explicitly.
+if [ -z "$VERSION" ]; then
+  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" 2>/dev/null \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+  [ -n "$VERSION" ] || die "could not determine the latest release (GitHub API unavailable?); try --version X.Y.Z"
 fi
+BASE="https://github.com/$REPO/releases/download/v${VERSION#v}"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
