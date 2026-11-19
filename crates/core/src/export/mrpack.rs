@@ -178,15 +178,18 @@ pub async fn write_mrpack(
         }
     }
 
-    let index = json!({
+    let mut index = json!({
         "formatVersion": 1,
         "game": "minecraft",
         "versionId": pack.version,
         "name": pack.name,
-        "summary": pack.summary,
         "files": files,
         "dependencies": deps,
     });
+
+    if let Some(sum) = &pack.summary {
+        index["summary"] = json!(sum);
+    }
 
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
