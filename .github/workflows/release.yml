@@ -63,11 +63,7 @@ jobs:
         with: { node-version: 24, cache: pnpm, cache-dependency-path: ui/pnpm-lock.yaml }
       - name: Stamp version
         shell: bash
-        run: |
-          V="${{ needs.version.outputs.version }}"
-          sed -i.bak "0,/^version = \".*\"/s//version = \"$V\"/" Cargo.toml
-          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
-          rm -f Cargo.toml.bak src-tauri/tauri.conf.json.bak
+        run: python3 scripts/stamp-version.py "${{ needs.version.outputs.version }}"
       - name: Configure Apple signing (optional)
         if: runner.os == 'macOS'
         shell: bash
