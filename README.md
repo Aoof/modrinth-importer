@@ -42,9 +42,25 @@ The installers verify SHA-256 checksums and put things where each OS expects the
 | Linux | `~/.local/bin/mrimport` | `~/.local/bin/ModrinthImporter.AppImage` + launcher entry |
 | Windows | `%LOCALAPPDATA%\Programs\ModrinthImporter\bin\mrimport.exe` (added to PATH) | Start menu via the installer |
 
-Options: `--cli-only`, `--gui-only`, `--version X.Y.Z`, `--system` (CLI to `/usr/local/bin`), `--uninstall`. Pass them as `sh -s -- --cli-only` when piping, or download the script first. Prefer manual installs? Grab files from [Releases](https://github.com/Aoof/modrinth-importer/releases).
+Options: `--cli-only`, `--gui-only`, `--version X.Y.Z`, `--system` (CLI to `/usr/local/bin`), `--uninstall`, `--keep-data`. Pass them as `sh -s -- --cli-only` when piping, or download the script first. Prefer manual installs? Grab files from [Releases](https://github.com/Aoof/modrinth-importer/releases).
 
 Update the CLI with `mrimport self-update`. To update the desktop app, run the installer again.
+
+> **Developer builds.** Every release is currently marked as a pre-release: the macOS app isn't notarized and the Windows installer isn't signed. The macOS installer seals the app with a local signature so it opens cleanly; see the [FAQ](docs/faq.md) for first-launch prompts when downloading manually.
+
+## Uninstall
+
+Removes the CLI, the desktop app, settings, caches, webview data and stored credentials. The installers never touch your PATH or shell profile on macOS and Linux, so there is nothing to undo there.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.sh | sh -s -- --uninstall
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.ps1))) -Uninstall
+```
+
+Add `--keep-data` (`-KeepData` on Windows) to keep settings and credentials. If you only want to clear data and keep the programs, run `mrimport purge` (`--dry-run` lists what it would remove).
 
 ## Quick start
 

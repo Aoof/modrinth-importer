@@ -26,3 +26,9 @@ Alternatively right-click the app and choose *Open*. Maintainers can enable full
 
 **Windows SmartScreen warns.**
 The Windows installer isn't code-signed. Choose *More info → Run anyway*.
+
+**What does uninstalling remove?**
+Everything the app created: the `mrimport` binary, the desktop app, its launcher entry (Linux) or Start menu entry and registry keys (Windows), settings, caches, webview data, saved window state, and the Modrinth/CurseForge credentials in your keychain. Your packs, exported `.mrpack` files and the Modrinth App are never touched. On Windows the NSIS uninstaller for the app is run first and the `mrimport` folder and its PATH entry are removed afterwards.
+
+**Why is every release a "developer build"?**
+Releases are published as pre-releases until the macOS and Windows builds can be signed. The installers and `mrimport self-update` use the newest release, pre-releases included.

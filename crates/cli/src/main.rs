@@ -49,6 +49,15 @@ enum Cmd {
         #[command(subcommand)]
         action: AuthCmd,
     },
+    /// Remove stored credentials, settings, caches and app data (not the program files).
+    Purge {
+        /// Don't ask for confirmation.
+        #[arg(short, long)]
+        yes: bool,
+        /// List what would be removed without deleting anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Update this executable to the latest release.
     SelfUpdate {
         /// Only check, don't install.
@@ -262,6 +271,7 @@ async fn run() -> Result<()> {
         Cmd::Convert(a) => convert(&cli, a).await,
         Cmd::Publish(a) => publish_cmd(&cli, a).await,
         Cmd::Auth { action } => auth(action),
+        Cmd::Purge { yes, dry_run } => purge(*yes, *dry_run),
         Cmd::SelfUpdate { check } => update::run(*check).await,
     }
 }
@@ -497,5 +507,33 @@ fn auth(action: &AuthCmd) -> Result<()> {
             println!("Stored credentials removed.");
         }
     }
+    Ok(())
+}
+
+fn purge(yes: bool, dry_run: bool) -> Result<()> {
+    let paths = config::local_data_paths();
+    for p in &paths {
+        println!("  {}", p.display());
+    }
+    // Credentials are never read here: just deleted, so the OS doesn't prompt for keychain access.
+    println!("  stored credentials in the OS keychain (if any)");
+    if dry_run {
+        return Ok(());
+    }
+    if !yes {
+        if !std::io::stdin().is_terminal() {
+            bail!("refusing to delete without confirmation; pass --yes");
+        }
+        eprint!("Remove the items above? [y/N] ");
+        let mut a = String::new();
+        std::io::stdin().read_line(&mut a)?;
+        if !a.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+    let n = config::purge_secrets();
+    let removed = config::purge_local_data()?;
+    println!("Removed {} item(s) and {n} credential(s).", removed.len());
     Ok(())
 }

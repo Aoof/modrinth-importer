@@ -133,4 +133,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ needs.version.outputs.version }}"
-          gh release create "v$V" dist/* --target "$GITHUB_SHA" --title "v$V" --generate-notes
+          # Developer builds: macOS/Windows binaries aren't notarized/signed yet, so
+          # every release is marked as a pre-release until signing secrets exist.
+          gh release create "v$V" dist/* --target "$GITHUB_SHA" --title "v$V (developer build)" \
+            --prerelease --generate-notes \
+            --notes "**Developer build.** Not signed or notarized; see the [FAQ](https://github.com/${{ github.repository }}/blob/master/docs/faq.md)."
