@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm, cache-dependency-path: ui/pnpm-lock.yaml }
       - run: pnpm --dir ui install --frozen-lockfile
       - run: pnpm --dir ui check
@@ -45,7 +45,7 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev patchelf
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm, cache-dependency-path: ui/pnpm-lock.yaml }
       - run: pnpm --dir ui install --frozen-lockfile && pnpm --dir ui build
       - run: cargo fmt --all --check
