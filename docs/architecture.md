@@ -21,4 +21,4 @@ Writes `modrinth.index.json` ([format](https://docs.modrinth.com/docs/modpacks/f
 Creates the project as a draft (`POST /project`), then uploads each version (`POST /version`, multipart), skipping duplicates by version number or SHA-512.
 
 ## Security notes
-Credentials go to the OS keychain. Zip entries with unsafe paths are ignored on read, and unsafe override paths are never written. The self-updater and installers verify SHA-256 checksums published with each release. Release binaries are not code-signed yet, so macOS and Windows may show a first-run warning.
+Credentials go to the OS keychain. Zip entries with unsafe paths are ignored on read, and unsafe override paths are never written. The self-updater and installers verify SHA-256 checksums published with each release. The macOS app is ad-hoc signed (Developer ID signing and notarization are supported when the Apple secrets are configured, see the FAQ); the Windows installer is not signed, so both may show a first-run warning.
