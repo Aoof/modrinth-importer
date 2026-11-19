@@ -14,6 +14,8 @@ The CurseForge API rejected your key. Common causes, most likely first:
    In the desktop app, paste the key into **Settings → CurseForge API key**.
 2. The key was copied incompletely or with extra whitespace (leading/trailing whitespace is trimmed automatically).
 3. The key is for another service, or was regenerated or revoked in the [CurseForge console](https://console.curseforge.com).
+4. It is the **author upload token** from `authors.curseforge.com` (the `xxxxxxxx-xxxx-…` form). That token only uploads files to your own projects. Importing needs a Core API key from the console.
+5. The key was never approved for third-party use: CurseForge may require an application for tools like this one.
 
 Run `mrimport doctor` (or **Settings → Diagnostics → Run check** in the app). It tells you where the key comes from (environment variable or keychain), whether its shape looks right, and whether the API accepts it.
 
@@ -31,5 +33,7 @@ Attach the file to a [new issue](https://github.com/Aoof/modrinth-importer/issue
 | Symptom | Fix |
 | --- | --- |
 | `could not determine the Minecraft version` | Bare mods folder: pass `--mc-version 1.20.1` (and `--loader` if needed). |
+| "Needs your file" in the review | See [Importing from CurseForge](curseforge.md#supplying-a-file-by-hand). |
+| A CurseForge link says "not a modpack" | The link is a mod page. Use one containing `/minecraft/modpacks/`. |
 | `keychain` errors on Linux or CI | Use `MODRINTH_TOKEN` / `CURSEFORGE_API_KEY` environment variables. |
 | Mods listed as skipped | They aren't on Modrinth and no jar was available; see the report and [Providers](providers.md). |

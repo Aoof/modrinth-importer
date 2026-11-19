@@ -79,6 +79,49 @@ pub fn redact(s: &str) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyShape {
+    /// 60 characters starting with `$2`: what the CurseForge Core API issues.
+    CoreApiLike,
+    /// 8-4-4-4-12 hex: what CurseForge's author (Upload API) tokens look like.
+    AuthorTokenLike,
+    Unknown,
+}
+
+pub fn key_shape(key: &str) -> KeyShape {
+    let k = key.trim();
+    let uuid = k.len() == 36
+        && k.char_indices().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        });
+    if uuid {
+        KeyShape::AuthorTokenLike
+    } else if k.starts_with("$2") && k.chars().count() == 60 {
+        KeyShape::CoreApiLike
+    } else {
+        KeyShape::Unknown
+    }
+}
+
+/// A user-facing warning when a pasted CurseForge key looks wrong.
+pub fn key_warning(key: &str) -> Option<String> {
+    match key_shape(key) {
+        KeyShape::CoreApiLike => None,
+        KeyShape::AuthorTokenLike => Some(
+            "This looks like a CurseForge author upload token (the 8-4-4-4-12 form from \
+             authors.curseforge.com), which the Core API rejects. Importing needs a Core API \
+             key from console.curseforge.com (about 60 characters, starting with $2a$)."
+                .into(),
+        ),
+        KeyShape::Unknown => Some(
+            "This doesn't look like a CurseForge Core API key (usually 60 characters starting \
+             with $2a$). If a shell expanded the $ parts, wrap the key in single quotes."
+                .into(),
+        ),
+    }
+}
+
 /// Describe an API key without revealing it. CurseForge keys are 60-character
 /// bcrypt-style strings starting with `$2a$`; shells expand the `$` parts if the
 /// key isn't single-quoted, which produces a 403 from the API.
@@ -90,14 +133,18 @@ pub fn describe_key(key: &str) -> String {
     if key.contains(char::is_whitespace) {
         notes.push("contains whitespace".into());
     }
-    if key.starts_with("$2") && key.chars().count() == 60 {
-        notes.push("shape looks like a CurseForge key".into());
-    } else {
-        notes.push(
+    match key_shape(key) {
+        KeyShape::CoreApiLike => notes.push("shape looks like a CurseForge Core API key".into()),
+        KeyShape::AuthorTokenLike => notes.push(
+            "WRONG KIND OF TOKEN? it looks like an author upload token (X-Api-Token), not a \
+             Core API key; create one at console.curseforge.com"
+                .into(),
+        ),
+        KeyShape::Unknown => notes.push(
             "unexpected shape (CurseForge keys are usually 60 characters starting with $2a$; \
              a shell may have expanded the $ parts, so wrap the key in single quotes)"
                 .into(),
-        );
+        ),
     }
     notes.join(", ")
 }
@@ -152,7 +199,31 @@ mod tests {
         assert!(!d.contains("abcdefgh"));
         assert!(d.contains("length"));
         assert!(describe_key("short").contains("unexpected shape"));
+        assert!(
+            describe_key("12345678-1234-1234-1234-123456789abc").contains("author upload token")
+        );
         assert!(describe_key(" $2a$ ").contains("whitespace"));
+    }
+
+    #[test]
+    fn key_shapes_and_warnings() {
+        let core = format!("$2a$10${}", "a".repeat(53)); // 60 chars, like a real key
+        assert_eq!(core.len(), 60);
+        assert_eq!(key_shape(&core), KeyShape::CoreApiLike);
+        assert!(key_warning(&core).is_none());
+        // one character short is not accepted as a Core API key
+        assert_eq!(key_shape(&core[..59]), KeyShape::Unknown);
+        let uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        assert_eq!(key_shape(uuid), KeyShape::AuthorTokenLike);
+        assert!(key_warning(uuid).unwrap().contains("author upload token"));
+        assert_eq!(key_shape(&format!("  {uuid}\n")), KeyShape::AuthorTokenLike);
+        assert_eq!(key_shape("2a10abc"), KeyShape::Unknown);
+        assert!(key_warning("2a10abc").unwrap().contains("single quotes"));
+        // 36 chars but not hex groups
+        assert_eq!(
+            key_shape("zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"),
+            KeyShape::Unknown
+        );
     }
 
     #[test]

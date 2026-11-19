@@ -5,6 +5,7 @@
 //!    version. A slug or title match is accepted; anything else is reported as
 //!    [`Resolution::Ambiguous`] so the user can choose.
 
+use crate::cflookup::Lookup;
 use crate::events::Reporter;
 use crate::model::*;
 use crate::modrinth::{Modrinth, Version};
@@ -93,16 +94,10 @@ pub fn query_from_filename(file: &str) -> String {
     stem[..cut].replace(['-', '_'], " ").trim().to_string()
 }
 
-pub async fn resolve(
-    pack: &ImportedPack,
-    mr: &Modrinth,
-    reporter: &Reporter,
-) -> Result<Vec<ResolvedMod>> {
-    let total = pack.mods.len();
-    let mut results: Vec<Option<Resolution>> = vec![None; total];
-
-    // ---- 1. exact by hash -------------------------------------------------
-    reporter.stage("Matching by file hash");
+/// Look up every mod that has a SHA-1 or SHA-512 on Modrinth. Returns one slot per
+/// input mod: `Some(Matched exact)` when the identical file is on Modrinth.
+pub async fn exact_by_hash(mr: &Modrinth, mods: &[ModEntry]) -> Result<Vec<Option<Resolution>>> {
+    let mut results: Vec<Option<Resolution>> = vec![None; mods.len()];
     for (algo, get) in [
         (
             "sha1",
@@ -110,12 +105,11 @@ pub async fn resolve(
         ),
         ("sha512", |e: &ModEntry| e.sha512.clone()),
     ] {
-        let pending: Vec<(usize, String)> = pack
-            .mods
+        let pending: Vec<(usize, String)> = mods
             .iter()
             .enumerate()
             .filter(|(i, _)| results[*i].is_none())
-            .filter_map(|(i, e)| get(e).map(|h| (i, h)))
+            .filter_map(|(i, e)| get(e).map(|h| (i, h.to_ascii_lowercase())))
             .collect();
         for chunk in pending.chunks(200) {
             let hashes: Vec<String> = chunk.iter().map(|(_, h)| h.clone()).collect();
@@ -168,19 +162,92 @@ pub async fn resolve(
             }
         }
     }
+    Ok(results)
+}
 
-    // ---- 2. fuzzy by search ----------------------------------------------
+/// Exact matches plus (as a library convenience) the by-name search. The app and CLI use
+/// [`resolve_with`] and leave the by-name search off unless the user turns it on.
+pub async fn resolve(
+    pack: &ImportedPack,
+    mr: &Modrinth,
+    reporter: &Reporter,
+) -> Result<Vec<ResolvedMod>> {
+    resolve_with(
+        pack,
+        mr,
+        reporter,
+        ResolveOptions {
+            enricher: None,
+            fuzzy: true,
+        },
+    )
+    .await
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct ResolveOptions<'a> {
+    /// Keyless lookup used to add names, links and exact file names to what is still
+    /// unmatched after the hash stage (needed to label and verify manual downloads).
+    pub enricher: Option<&'a Lookup>,
+    /// Also search Modrinth by name for a *similar* project. Off by default: a modpack is
+    /// assumed not to exist on Modrinth, so only exact (hash) matches are accepted.
+    pub fuzzy: bool,
+}
+
+/// Like [`resolve`], with control over enrichment and the by-name search.
+pub async fn resolve_with(
+    pack: &ImportedPack,
+    mr: &Modrinth,
+    reporter: &Reporter,
+    opts: ResolveOptions<'_>,
+) -> Result<Vec<ResolvedMod>> {
+    let enricher = opts.enricher;
+    let total = pack.mods.len();
+    let mut mods = pack.mods.clone();
+
+    // ---- 1. exact by hash -------------------------------------------------
+    reporter.stage("Matching by file hash");
+    let mut results = exact_by_hash(mr, &mods).await?;
+
+    // ---- 1b. keyless enrichment of what is still unmatched ----------------
+    if let Some(l) = enricher {
+        let idx: Vec<usize> = (0..total).filter(|i| results[*i].is_none()).collect();
+        if !idx.is_empty() {
+            let mut sub: Vec<ModEntry> = idx.iter().map(|i| mods[*i].clone()).collect();
+            l.enrich(&mut sub, reporter).await;
+            for (k, i) in idx.iter().enumerate() {
+                mods[*i] = sub[k].clone();
+            }
+        }
+    }
+
+    // ---- 2. by-name search (opt-in) ----------------------------------------
+    if !opts.fuzzy {
+        for (e, r) in mods.iter().zip(results.iter_mut()) {
+            if r.is_none() {
+                *r = Some(Resolution::Unmatched {
+                    reason: if e.download_url.is_some() || e.origin.is_some() {
+                        "not on Modrinth".into()
+                    } else {
+                        "not on Modrinth and no source to download it from".into()
+                    },
+                });
+            }
+        }
+    }
     let loader = pack.loader.modrinth_id();
     let loader_opt = (pack.loader != Loader::Vanilla).then_some(loader);
     let todo: Vec<usize> = (0..total).filter(|i| results[*i].is_none()).collect();
-    reporter.stage(format!(
-        "Searching Modrinth for {} unmatched mods",
-        todo.len()
-    ));
+    if !todo.is_empty() {
+        reporter.stage(format!(
+            "Searching Modrinth for {} unmatched mods",
+            todo.len()
+        ));
+    }
     let done = std::sync::atomic::AtomicUsize::new(0);
     let fuzzy: Vec<(usize, Resolution)> = stream::iter(todo)
         .map(|i| {
-            let e = &pack.mods[i];
+            let e = &mods[i];
             let done = &done;
             async move {
                 let r = fuzzy_one(mr, e, loader_opt, &pack.mc_version)
@@ -200,10 +267,8 @@ pub async fn resolve(
         results[i] = Some(r);
     }
 
-    Ok(pack
-        .mods
-        .iter()
-        .cloned()
+    Ok(mods
+        .into_iter()
         .zip(results)
         .map(|(entry, r)| ResolvedMod {
             entry,
@@ -252,11 +317,14 @@ async fn fuzzy_one(
     loader: Option<&str>,
     mc: &str,
 ) -> Result<Resolution> {
+    // A CurseForge entry whose real file name is unknown has only a placeholder
+    // name (`cf-<project>-<file>.jar`); searching for that would return garbage.
+    let filename_usable = e.cf.is_none() || e.expected_file_name.is_some();
     let mut queries: Vec<String> = vec![];
     for q in [
         e.slug_hint.clone(),
         e.name_hint.clone(),
-        Some(query_from_filename(&e.file_name)),
+        filename_usable.then(|| query_from_filename(&e.file_name)),
     ]
     .into_iter()
     .flatten()
@@ -310,7 +378,11 @@ async fn fuzzy_one(
     }
     Ok(if candidates.is_empty() {
         Resolution::Unmatched {
-            reason: "no matching project on Modrinth".into(),
+            reason: if queries.is_empty() {
+                "no name available to search for".into()
+            } else {
+                "no matching project on Modrinth".into()
+            },
         }
     } else {
         Resolution::Ambiguous { candidates }

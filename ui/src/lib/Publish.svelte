@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { api, type ProgressEvent, type PublishReport, type PublishRequest } from "./api";
+  import { api, pickJars as chooseJars, type ProgressEvent, type PublishReport, type PublishRequest } from "./api";
 
   let source = $state<PublishRequest["source"]>("jars");
   let value = $state("");
@@ -20,8 +19,8 @@
   } as const;
 
   async function pickJars() {
-    const r = await open({ multiple: true, filters: [{ name: "Mod jar", extensions: ["jar"] }] });
-    if (Array.isArray(r)) value = r.join("\n");
+    const r = await chooseJars(true);
+    if (r.length) value = r.join("\n");
   }
 
   async function run(dryRun: boolean) {

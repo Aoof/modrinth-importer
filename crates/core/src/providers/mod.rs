@@ -6,6 +6,7 @@ pub mod jarmeta;
 mod packwiz;
 pub mod tree;
 
+use crate::cflookup::Lookup;
 use crate::curseforge::CurseForge;
 use crate::events::Reporter;
 use crate::model::*;
@@ -22,16 +23,22 @@ pub struct LoadOptions {
 }
 
 pub struct LoadCtx {
-    pub curseforge: Option<CurseForge>,
+    /// How CurseForge `(projectID, fileID)` pairs are resolved.
+    pub lookup: Lookup,
     pub reporter: Reporter,
 }
 
 impl LoadCtx {
+    /// Core API only (no keyless fallbacks), silent progress.
     pub fn new(curseforge: Option<CurseForge>) -> Self {
         Self {
-            curseforge,
+            lookup: Lookup::new(curseforge, false),
             reporter: Reporter::silent(),
         }
+    }
+
+    pub fn with_lookup(lookup: Lookup, reporter: Reporter) -> Self {
+        Self { lookup, reporter }
     }
 }
 

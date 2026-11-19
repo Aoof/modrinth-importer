@@ -68,10 +68,22 @@ impl Origin {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CfRef {
     pub project_id: u64,
     pub file_id: u64,
+}
+
+/// Where information about a CurseForge file came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LookupSource {
+    /// CurseForge Core API (needs an API key): exact names, hashes and links.
+    CoreApi,
+    /// cursemaven.com: the jar itself, hashed locally (keyless, third party).
+    CurseMaven,
+    /// api.cfwidget.com: project and file names, links (keyless, third party).
+    CfWidget,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,11 +99,31 @@ pub struct ModEntry {
     pub origin: Option<Origin>,
     pub download_url: Option<String>,
     pub cf: Option<CfRef>,
+    /// The exact file name this entry should have, when known (used to verify manual downloads).
+    #[serde(default)]
+    pub expected_file_name: Option<String>,
+    /// CurseForge project page, when known.
+    #[serde(default)]
+    pub cf_url: Option<String>,
+    /// Which lookups contributed to this entry's data.
+    #[serde(default)]
+    pub lookup_sources: Vec<LookupSource>,
     pub client_required: bool,
     pub server_required: bool,
 }
 
 impl ModEntry {
+    /// A name fit for showing people: never the internal `cf-<project>-<file>.jar` placeholder.
+    pub fn display_name(&self) -> String {
+        if let Some(n) = self.expected_file_name.as_ref().or(self.name_hint.as_ref()) {
+            return n.clone();
+        }
+        match self.cf {
+            Some(cf) => format!("CurseForge project {} (file {})", cf.project_id, cf.file_id),
+            None => self.file_name.clone(),
+        }
+    }
+
     pub fn new(file_name: impl Into<String>) -> Self {
         Self {
             file_name: file_name.into(),
@@ -103,6 +135,9 @@ impl ModEntry {
             origin: None,
             download_url: None,
             cf: None,
+            expected_file_name: None,
+            cf_url: None,
+            lookup_sources: vec![],
             client_required: true,
             server_required: true,
         }

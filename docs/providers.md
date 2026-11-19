@@ -4,7 +4,7 @@ Detection is automatic: give `convert`/`inspect` a `.zip` or a folder and the fo
 
 | Source | Recognised by | Notes |
 | --- | --- | --- |
-| CurseForge modpack | `manifest.json` with `manifestType: minecraftModpack` | Needs a CurseForge API key to look up file hashes and names. `overrides/` is carried over. |
+| CurseForge modpack | `manifest.json` with `manifestType: minecraftModpack` | A Core API key looks up exact file hashes and names; without one, use the experimental keyless lookup. `overrides/` is carried over. Can also be fetched from a link or search: see [Importing from CurseForge](curseforge.md). |
 | CurseForge app instance | `minecraftinstance.json` | Uses the jars on disk; no API key needed. |
 | Prism / MultiMC | `mmc-pack.json` | Minecraft version and loader from the components list. Game folder is `.minecraft` or `minecraft`. |
 | ATLauncher | `instance.json` with a `launcher` object | |
