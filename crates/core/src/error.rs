@@ -27,3 +27,29 @@ pub enum Error {
     #[error("missing credential: {0}")]
     MissingCredential(&'static str),
 }
+
+impl Error {
+    /// Build an API error, appending a plain-language hint for common failures.
+    pub fn api(provider: &'static str, status: u16, body: String) -> Self {
+        let hint = match (provider, status) {
+            ("CurseForge", 401 | 403) => Some(
+                "CurseForge rejected the API key. Check that the key is valid and copied in full: \
+                 it is ~60 characters starting with $2a$, and shells expand the $ parts unless the \
+                 key is in single quotes. Re-save it with `mrimport auth curseforge` (paste when \
+                 prompted) or in Settings. Run `mrimport doctor` for a full check.",
+            ),
+            ("Modrinth", 401) => Some("Modrinth rejected the token. Create a new personal access token and run `mrimport auth modrinth`."),
+            (_, 429) => Some("Rate limited; wait a minute and try again."),
+            _ => None,
+        };
+        let body = match hint {
+            Some(h) => format!("{body}\n  hint: {h}"),
+            None => body,
+        };
+        Error::Api {
+            provider,
+            status,
+            body,
+        }
+    }
+}

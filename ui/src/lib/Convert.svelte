@@ -113,7 +113,14 @@
 <h1>Import a pack to Modrinth</h1>
 <p class="lede">Convert a CurseForge, Prism/MultiMC, ATLauncher, FTB, Technic or packwiz pack, or a mods folder, into a Modrinth <span class="mono">.mrpack</span>.</p>
 
-{#if error}<div class="notice bad">{error}</div>{/if}
+{#if error}
+  <div class="notice bad" style="user-select:text">
+    <div style="white-space:pre-wrap">{error}</div>
+    {#if /CurseForge|Modrinth API|network/.test(error)}
+      <div style="margin-top:6px">Open <b>Settings → Diagnostics</b> to check your keys and save a debug log for a bug report.</div>
+    {/if}
+  </div>
+{/if}
 
 {#if phase === "idle"}
   <div class="drop" class:over>

@@ -16,4 +16,11 @@ body:
       options: [CurseForge, Prism / MultiMC, ATLauncher, FTB, Technic, packwiz, mods folder, Publishing]
   - type: textarea
     id: logs
-    attributes: { label: Output / logs, render: shell }
+    attributes:
+      label: Output
+      description: Paste the command output or error message.
+      render: shell
+  - type: markdown
+    attributes:
+      value: |
+        **Attach a debug log if you can.** CLI: rerun with `--debug-log` or run `mrimport doctor`. App: Settings → Diagnostics → Save debug log. It never contains your keys. See [Troubleshooting](https://github.com/Aoof/modrinth-importer/blob/master/docs/troubleshooting.md).
