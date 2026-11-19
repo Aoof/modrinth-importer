@@ -1,9 +1,25 @@
 [package]
 name = "mrimport-cli"
+description = "Command-line interface for Modrinth Importer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "mrimport"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.8", features = ["derive", "env"] }
+hex = "0.4.3"
+indicatif = "0.18.6"
+mrimport-core = { version = "0.1.0", path = "../core" }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+rpassword = "7.5.5"
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
