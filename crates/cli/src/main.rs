@@ -8,6 +8,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use mrimport_core::{
     config::{self, Secret},
     curseforge::CurseForge,
+    debuglog, diagnostics,
     events::{Event, Reporter},
     export::mrpack::{open_with_default_app, write_mrpack, ExportOptions},
     model::Loader,
@@ -28,6 +29,11 @@ struct Cli {
     /// Override the Modrinth API base URL (e.g. https://staging-api.modrinth.com/v2).
     #[arg(long, global = true, env = "MODRINTH_API_BASE", hide = true)]
     api_base: Option<String>,
+    /// Write a debug log (API calls, statuses, errors; no credentials) to FILE
+    /// (default: mrimport-debug.log) to attach to bug reports.
+    #[arg(long, global = true, value_name = "FILE", num_args = 0..=1,
+          default_missing_value = "mrimport-debug.log", alias = "debug")]
+    debug_log: Option<PathBuf>,
     #[command(subcommand)]
     command: Cmd,
 }
@@ -49,6 +55,8 @@ enum Cmd {
         #[command(subcommand)]
         action: AuthCmd,
     },
+    /// Check connectivity and credentials and write a debug log for bug reports.
+    Doctor,
     /// Remove stored credentials, settings, caches and app data (not the program files).
     Purge {
         /// Don't ask for confirmation.
@@ -256,21 +264,46 @@ fn read_secret(arg: Option<String>, prompt: &str) -> Result<String> {
     Ok(s.trim().to_string())
 }
 
+static DEBUG_LOG_PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+fn enable_debug_log(path: &std::path::Path) {
+    match debuglog::enable_file(path) {
+        Ok(()) => {
+            let _ = DEBUG_LOG_PATH.set(path.to_path_buf());
+        }
+        Err(e) => eprintln!("warning: could not write debug log {}: {e}", path.display()),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
         eprintln!("error: {e:#}");
+        match DEBUG_LOG_PATH.get() {
+            Some(p) => eprintln!(
+                "\nDebug log saved to {}. Attach it to your bug report; it contains no credentials.",
+                p.display()
+            ),
+            None => eprintln!("\nTip: rerun with --debug-log to write a log you can attach to a bug report, or run `mrimport doctor`."),
+        }
         std::process::exit(1);
     }
 }
 
 async fn run() -> Result<()> {
     let cli = Cli::parse();
+    let wants_log = cli.debug_log.clone().or_else(|| {
+        matches!(cli.command, Cmd::Doctor).then(|| PathBuf::from("mrimport-debug.log"))
+    });
+    if let Some(p) = wants_log {
+        enable_debug_log(&p);
+    }
     match &cli.command {
         Cmd::Inspect { path, load } => inspect(&cli, path, load).await,
         Cmd::Convert(a) => convert(&cli, a).await,
         Cmd::Publish(a) => publish_cmd(&cli, a).await,
         Cmd::Auth { action } => auth(action),
+        Cmd::Doctor => doctor(&cli).await,
         Cmd::Purge { yes, dry_run } => purge(*yes, *dry_run),
         Cmd::SelfUpdate { check } => update::run(*check).await,
     }
@@ -535,5 +568,17 @@ fn purge(yes: bool, dry_run: bool) -> Result<()> {
     let n = config::purge_secrets();
     let removed = config::purge_local_data()?;
     println!("Removed {} item(s) and {n} credential(s).", removed.len());
+    Ok(())
+}
+
+async fn doctor(cli: &Cli) -> Result<()> {
+    let mr = modrinth(&cli.api_base, false)?;
+    println!("{}", diagnostics::run(&mr).await);
+    if let Some(p) = DEBUG_LOG_PATH.get() {
+        println!(
+            "\nDebug log saved to {} (no credentials; home folder shown as ~). Attach it to your bug report.",
+            p.display()
+        );
+    }
     Ok(())
 }

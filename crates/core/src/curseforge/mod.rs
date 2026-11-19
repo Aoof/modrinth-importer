@@ -1,6 +1,6 @@
 //! Minimal CurseForge Core API client (needs a free API key).
 
-use crate::{Error, Result};
+use crate::{debuglog, Error, Result};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -70,27 +70,60 @@ impl CurseForge {
         }
     }
 
+    /// Send a request with the API key, logging method, status, timing and (on
+    /// failure) a truncated body to the debug log. The key itself is never logged.
+    async fn send(&self, rb: reqwest::RequestBuilder, label: &str) -> Result<reqwest::Response> {
+        let started = std::time::Instant::now();
+        let r = rb
+            .header("x-api-key", self.key.trim())
+            .send()
+            .await
+            .map_err(|e| {
+                debuglog::log(format!("CurseForge {label} -> request failed: {e}"));
+                Error::from(e)
+            })?;
+        let status = r.status();
+        let h = |n: &str| {
+            r.headers()
+                .get(n)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("-")
+                .to_string()
+        };
+        debuglog::log(format!(
+            "CurseForge {label} -> {} ({} ms) server={} cf-ray={} content-type={}",
+            status.as_u16(),
+            started.elapsed().as_millis(),
+            h("server"),
+            h("cf-ray"),
+            h("content-type")
+        ));
+        if !status.is_success() {
+            let body = r.text().await.unwrap_or_default();
+            debuglog::log(format!(
+                "CurseForge {label} error body: {}",
+                debuglog::snippet(&body)
+            ));
+            return Err(Error::api("CurseForge", status.as_u16(), body));
+        }
+        Ok(r)
+    }
+
     async fn post<T: for<'de> Deserialize<'de>>(
         &self,
         path: &str,
         body: serde_json::Value,
     ) -> Result<T> {
-        let r = self
-            .http
-            .post(format!("{}{}", self.base, path))
-            .header("x-api-key", &self.key)
-            .json(&body)
-            .send()
-            .await?;
-        let status = r.status();
-        if !status.is_success() {
-            return Err(Error::Api {
-                provider: "CurseForge",
-                status: status.as_u16(),
-                body: r.text().await.unwrap_or_default(),
-            });
-        }
+        let rb = self.http.post(format!("{}{}", self.base, path)).json(&body);
+        let r = self.send(rb, &format!("POST {path}")).await?;
         Ok(r.json::<Data<T>>().await?.data)
+    }
+
+    /// Cheap authenticated request used to validate the API key.
+    pub async fn check_key(&self) -> Result<()> {
+        self.get::<serde_json::Value>("/games", &[("pageSize", "1".into())])
+            .await
+            .map(|_| ())
     }
 
     pub async fn files(&self, file_ids: &[u64]) -> Result<Vec<CfFile>> {
@@ -138,21 +171,8 @@ impl CurseForge {
         path: &str,
         query: &[(&str, String)],
     ) -> Result<T> {
-        let r = self
-            .http
-            .get(format!("{}{}", self.base, path))
-            .header("x-api-key", &self.key)
-            .query(query)
-            .send()
-            .await?;
-        let status = r.status();
-        if !status.is_success() {
-            return Err(Error::Api {
-                provider: "CurseForge",
-                status: status.as_u16(),
-                body: r.text().await.unwrap_or_default(),
-            });
-        }
+        let rb = self.http.get(format!("{}{}", self.base, path)).query(query);
+        let r = self.send(rb, &format!("GET {path}")).await?;
         Ok(r.json::<Data<T>>().await?.data)
     }
 
