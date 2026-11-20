@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       skip: ${{ steps.v.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: v
         run: bash scripts/next-version.sh >> "$GITHUB_OUTPUT"
@@ -46,7 +46,7 @@ jobs:
           - { os: windows-latest,   target: x86_64-pc-windows-msvc,    gui: windows-x64,     bundle: nsis }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "${{ matrix.target }}" }
       - uses: Swatinem/rust-cache@v2
@@ -57,9 +57,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev patchelf
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with: { version: 10 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm, cache-dependency-path: ui/pnpm-lock.yaml }
       - name: Stamp version
         shell: bash
@@ -108,7 +108,7 @@ jobs:
             esac
           fi
           ls -l out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: assets-${{ matrix.target }}
           path: out/*
@@ -118,9 +118,9 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: dist, pattern: "assets-*", merge-multiple: true }
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
