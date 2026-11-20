@@ -372,3 +372,45 @@ async fn jar_metadata_can_pair_a_file_with_a_mod_but_never_verifies_it() {
         "the mod we know nothing about is never auto-paired"
     );
 }
+
+/// The same validation message is shown in the app and the CLI, so it must not name command-line flags.
+#[tokio::test]
+async fn publish_validation_speaks_plainly_and_never_names_cli_flags() {
+    use mrimport_core::publish::{publish, FileSource, ProjectSpec, PublishPlan, ReleaseSpec};
+    let plan = PublishPlan {
+        create_project: true,
+        project: ProjectSpec {
+            title: "E2E Test Mod".into(),
+            slug: "e2e-test-mod".into(),
+            summary: "x".into(),
+            body: "x".into(),
+            categories: vec![],
+            client_side: "optional".into(),
+            server_side: "optional".into(),
+            license_id: "MIT".into(),
+            source_url: None,
+            issues_url: None,
+        },
+        releases: vec![ReleaseSpec {
+            name: "r".into(),
+            version_number: "1.0.0".into(),
+            changelog: String::new(),
+            game_versions: vec![],
+            loaders: vec!["fabric".into()],
+            version_type: "release".into(),
+            files: vec![FileSource::Local {
+                path: "x.jar".into(),
+            }],
+        }],
+    };
+    let (_s, mr) = no_modrinth_matches().await;
+    let e = publish(&plan, &mr, true, &Reporter::silent())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("needs Minecraft versions and loaders"), "{e}");
+    assert!(
+        !e.contains("--"),
+        "no CLI flags in a message shown in the app: {e}"
+    );
+}

@@ -90,6 +90,6 @@ Cost: your pack's CurseForge project and file IDs are sent to those two third-pa
 
 ## Limits and known gaps
 
-- Search, link lookup and downloads use the documented Core API endpoints (`/v1/mods/search`, `/v1/mods/{id}`, `/v1/mods/{id}/files`, `…/download-url`). The Minecraft game id (432) and the modpack class id (4471) are constants in `crates/core/src/curseforge/mod.rs`; if CurseForge changes them, search returns nothing until they are updated. Slug lookups don't depend on the class id.
-- Results are sorted by popularity using the API's sort field; the sort-field numbers and the default order of a project's file list are not spelled out in the part of CurseForge's documentation this was built from, so files are sorted by the app itself.
-- The tests use a mock of the Core API. They have not been run against CurseForge with a real key.
+- **Checked against the real CurseForge API** (with a Core API key, on 2026-11-19): search by name, link and slug lookup, the version list, the pack download from CurseForge's CDN, the per-mod file lookup, and a complete import of Fabulously Optimized (51 mods, all exact on Modrinth). That confirmed the Minecraft game id (432) and the modpack class id (4471), which are constants in `crates/core/src/curseforge/mod.rs`.
+- **Not yet checked against the real API:** a modpack or mod whose author disallows third-party downloads (no download URL), and importing a pack where many mods are *not* on Modrinth (the download-and-bundle path ran against mocks and a stand-in server). Files are sorted by the app itself because the order of a project's file list isn't specified in the documentation this was built from.
+- If CurseForge changes the game or class ids, search returns nothing until the constants are updated; slug and ID lookups don't depend on the class id.
