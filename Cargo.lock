@@ -2671,6 +2671,7 @@ dependencies = [
  "rpassword",
  "serde_json",
  "sha2 0.11.1",
+ "tauri-winres",
  "tokio",
 ]
 

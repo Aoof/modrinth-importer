@@ -57,6 +57,15 @@
   <pre>irm https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.ps1 | iex</pre>
   <p class="os">Installs the <code>mrimport</code> command and the desktop app, checksum-verified. Or download directly from <a href="https://github.com/Aoof/modrinth-importer/releases/latest">Releases</a>.</p>
 
+  <p class="os">Windows Security may flag the installer or <code>mrimport.exe</code>: the builds aren't code-signed yet, so Defender's heuristics treat them as unknown. If it does, allow the item under <em>Windows Security → Protection history</em> and run the command again. <a href="https://github.com/Aoof/modrinth-importer/blob/master/docs/faq.md">More in the FAQ</a>.</p>
+
+  <h2>Uninstall</h2>
+  <p class="os">macOS and Linux</p>
+  <pre>curl -fsSL https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.sh | sh -s -- --uninstall</pre>
+  <p class="os">Windows (PowerShell)</p>
+  <pre>&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Aoof/modrinth-importer/master/install/install.ps1))) -Uninstall</pre>
+  <p class="os">Removes the CLI, the desktop app, settings, caches and stored credentials. Add <code>--keep-data</code> (<code>-KeepData</code> on Windows) to keep settings and credentials. Your packs and exported files are never touched.</p>
+
   <h2>Use</h2>
 <pre>mrimport convert MyPack.zip --open</pre>
   <p>Mods are matched to Modrinth by file hash first, then by name. Anything Modrinth doesn't host can be bundled into the pack, and you get a report of what was skipped.</p>
