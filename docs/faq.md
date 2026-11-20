@@ -27,6 +27,9 @@ Alternatively right-click the app and choose *Open*. Maintainers can enable full
 **Windows SmartScreen warns.**
 The Windows installer isn't code-signed. Choose *More info → Run anyway*.
 
+**Windows says the file "contains a virus or potentially unwanted software".**
+That's Microsoft Defender flagging an unsigned developer build, a false positive. The PowerShell installer tells you which file was blocked and keeps going with the rest. To install it anyway, open *Windows Security → Virus & threat protection → Protection history*, select the blocked item, check that it names `mrimport-x86_64-pc-windows-msvc.exe` or `ModrinthImporter-windows-x64-setup.exe`, choose *Actions → Allow on device*, then run the installer again. You can compare the file with `SHA256SUMS` on the release first. Reporting it to Microsoft as an incorrect detection ([file submission](https://www.microsoft.com/wdsi/filesubmission)) helps clear it for everyone. Don't turn off real-time protection to get around it.
+
 **What does uninstalling remove?**
 Everything the app created: the `mrimport` binary, the desktop app, its launcher entry (Linux) or Start menu entry and registry keys (Windows), settings, caches, webview data, saved window state, and the Modrinth/CurseForge credentials in your keychain. Your packs, exported `.mrpack` files and the Modrinth App are never touched. On Windows the NSIS uninstaller for the app is run first and the `mrimport` folder and its PATH entry are removed afterwards.
 

@@ -110,6 +110,9 @@ try {
   function Get-Verified([string]$asset) {
     Write-Host "Downloading $asset..."
     Invoke-WebRequest "$base/$asset" -OutFile "$tmp\$asset"
+    if (-not (Test-Path -LiteralPath "$tmp\$asset")) {
+      throw [IO.IOException]::new("$asset disappeared after download; antivirus likely quarantined it as a virus or potentially unwanted software.")
+    }
     $line = $sums | Where-Object { $_ -match "\s\*?$([regex]::Escape($asset))$" } | Select-Object -First 1
     if (-not $line) { throw "$asset is not listed in SHA256SUMS" }
     $want = ($line -split "\s+")[0].ToLower()
@@ -118,25 +121,57 @@ try {
     return "$tmp\$asset"
   }
 
-  if (-not $GuiOnly) {
-    $f = Get-Verified $CliAsset
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    Copy-Item $f (Join-Path $InstallDir "mrimport.exe") -Force
-    $p = [Environment]::GetEnvironmentVariable("Path", "User")
-    if (($p -split ";") -notcontains $InstallDir) {
-      [Environment]::SetEnvironmentVariable("Path", ($(if ($p) { "$p;" } else { "" }) + $InstallDir), "User")
-      Write-Host "Added $InstallDir to your PATH (restart the terminal to use `mrimport`)."
+  # Defender sometimes quarantines unsigned builds (a false positive). It shows up as
+  # ERROR_VIRUS_INFECTED (0x800700E1) when the file is opened, or the file just vanishes.
+  $blocked = @()
+  function Test-Blocked($e) {
+    $x = $e.Exception
+    while ($x) {
+      if ($x.HResult -eq -2147024671 -or $x.Message -match "virus|potentially unwanted") { return $true }
+      $x = $x.InnerException
     }
-    Write-Host "Installed CLI: $InstallDir\mrimport.exe"
+    return $false
+  }
+
+  if (-not $GuiOnly) {
+    try {
+      $f = Get-Verified $CliAsset
+      New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+      Copy-Item $f (Join-Path $InstallDir "mrimport.exe") -Force
+      $p = [Environment]::GetEnvironmentVariable("Path", "User")
+      if (($p -split ";") -notcontains $InstallDir) {
+        [Environment]::SetEnvironmentVariable("Path", ($(if ($p) { "$p;" } else { "" }) + $InstallDir), "User")
+        Write-Host "Added $InstallDir to your PATH (restart the terminal to use `mrimport`)."
+      }
+      Write-Host "Installed CLI: $InstallDir\mrimport.exe"
+    }
+    catch { if (Test-Blocked $_) { $blocked += $CliAsset } else { throw } }
   }
 
   if (-not $CliOnly) {
-    $f = Get-Verified $GuiAsset
-    Write-Host "Installing the desktop app..."
-    Start-Process $f -ArgumentList "/S" -Wait
-    Write-Host "Installed app (Start menu: Modrinth Importer)."
+    try {
+      $f = Get-Verified $GuiAsset
+      Write-Host "Installing the desktop app..."
+      Start-Process $f -ArgumentList "/S" -Wait
+      Write-Host "Installed app (Start menu: Modrinth Importer)."
+    }
+    catch { if (Test-Blocked $_) { $blocked += $GuiAsset } else { throw } }
   }
-  Write-Host "Done."
+
+  if ($blocked) {
+    Write-Warning ("Windows Security blocked " + ($blocked -join " and ") + ".")
+    Write-Host @"
+This is a false positive: these developer builds aren't code-signed yet, and Defender's
+heuristics flag new unsigned programs. The files are checksum-verified against the release.
+To install anyway:
+  1. Open Windows Security > Virus & threat protection > Protection history.
+  2. Pick the blocked item, check it names $($blocked -join " / "), and choose Actions > Allow on device.
+  3. Run this installer again.
+Or download the file from https://github.com/$Repo/releases and compare it with SHA256SUMS.
+Please also report it at https://www.microsoft.com/wdsi/filesubmission (choose "Incorrectly detected").
+"@
+  }
+  else { Write-Host "Done." }
 }
 finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
