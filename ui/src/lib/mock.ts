@@ -90,6 +90,8 @@ const files = (locked: boolean) => [
 
 export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
+    case "check_update": await sleep(300); return { version: "0.2.0", current: "0.1.0" };
+    case "install_update": await sleep(1500); return null;
     case "scan_pack": {
       await sleep(500);
       const resolved = fixture();

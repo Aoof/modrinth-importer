@@ -116,3 +116,52 @@ async fn bare_mods_folder_needs_mc_version() {
         .unwrap();
     assert_eq!(pack.loader, Loader::Fabric);
 }
+
+/// A failure while writing must not leave a truncated zip (no end record) where the pack should be.
+#[tokio::test]
+async fn a_failed_export_leaves_no_broken_archive() {
+    use mrimport_core::model::{ImportedPack, Loader, Origin, OverrideFile, SourceKind};
+    let tmp = tempfile::tempdir().unwrap();
+    let pack = ImportedPack {
+        source: SourceKind::Folder,
+        name: "p".into(),
+        version: "1".into(),
+        summary: None,
+        mc_version: "1.20.1".into(),
+        loader: Loader::Vanilla,
+        loader_version: None,
+        mods: vec![],
+        overrides: vec![
+            OverrideFile {
+                path: "config/ok.toml".into(),
+                origin: Origin::File {
+                    path: tmp.path().join("ok.toml"),
+                },
+            },
+            OverrideFile {
+                path: "config/missing.toml".into(),
+                origin: Origin::File {
+                    path: tmp.path().join("does-not-exist"),
+                },
+            },
+        ],
+    };
+    std::fs::write(tmp.path().join("ok.toml"), "a=1").unwrap();
+    let out = tmp.path().join("out.mrpack");
+    let mr = Modrinth::with_base("http://127.0.0.1:1", None);
+    let res = write_mrpack(
+        &pack,
+        &[],
+        &out,
+        &ExportOptions::default(),
+        &mr,
+        &Reporter::silent(),
+    )
+    .await;
+    assert!(res.is_err());
+    assert!(!out.exists(), "no archive at the final path");
+    assert!(
+        !tmp.path().join("out.mrpack.part").exists(),
+        "no leftover temp file"
+    );
+}

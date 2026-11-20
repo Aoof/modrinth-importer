@@ -22,6 +22,7 @@ pub mod modrinth;
 pub mod providers;
 pub mod publish;
 pub mod resolve;
+pub mod update;
 
 pub use error::{Error, Result};
 

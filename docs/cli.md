@@ -63,9 +63,9 @@ Checks that Modrinth is reachable, shows where your Modrinth token and CurseForg
 
 Removes everything the app stores outside its program files: settings, caches, webview data, saved state and the credentials in your OS keychain. `--dry-run` only lists them. Without `--yes` it asks first and refuses to run non-interactively. Program files are removed by the installers' `--uninstall`.
 
-## `mrimport self-update [--check]`
+## `mrimport self-update [--check] [--cli-only | --gui-only]`
 
-Downloads the newest release binary for your platform, verifies its SHA-256 against the release's `SHA256SUMS`, and replaces the running executable.
+Does what the installers do. It downloads the newest CLI (and the desktop app's installer, if the app is installed), verifies each file's SHA-256 against the release's `SHA256SUMS` **before changing anything**, then removes the old program files and installs the new ones. Settings and credentials are kept. An older or equal release is never installed. `--cli-only` skips the app; `--gui-only` reinstalls just the app. If Windows Security blocks a download, nothing is changed and the message says how to allow it.
 
 ## Environment
 

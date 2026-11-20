@@ -216,16 +216,57 @@ pub async fn write_mrpack(
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut zip = zip::ZipWriter::new(std::fs::File::create(out)?);
-    let opts_z = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    zip.start_file("modrinth.index.json", opts_z)?;
-    zip.write_all(&serde_json::to_vec_pretty(&index)?)?;
+    // Write to a side file and rename when complete, so a failure or an interrupted run never
+    // leaves a truncated archive (no end-of-central-directory record) at the final path.
+    let part = {
+        let mut n = out.as_os_str().to_owned();
+        n.push(".part");
+        std::path::PathBuf::from(n)
+    };
+    let written = write_archive(&part, &index, bundled, pack, &mut report, reporter);
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    if out.exists() {
+        std::fs::remove_file(out)?;
+    }
+    if let Err(e) = std::fs::rename(&part, out) {
+        let _ = std::fs::remove_file(&part);
+        return Err(e.into());
+    }
+    Ok(report)
+}
+
+fn write_archive(
+    part: &Path,
+    index: &serde_json::Value,
+    bundled: Vec<(String, Vec<u8>)>,
+    pack: &ImportedPack,
+    report: &mut ExportReport,
+    reporter: &Reporter,
+) -> Result<()> {
+    reporter.stage("Writing archive");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(part)?);
+    let deflated =
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    // Jars are already compressed; deflating them again only burns time.
+    let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let total = bundled.len() + pack.overrides.len() + 1;
+    let mut done = 1;
+    zip.start_file("modrinth.index.json", deflated)?;
+    zip.write_all(&serde_json::to_vec_pretty(index)?)?;
+    reporter.progress(done, total);
     for (name, bytes) in bundled {
-        zip.start_file(name, opts_z)?;
+        zip.start_file(name, stored)?;
         zip.write_all(&bytes)?;
+        done += 1;
+        reporter.progress(done, total);
     }
     let mut seen = HashSet::new();
     for o in &pack.overrides {
+        done += 1;
+        reporter.progress(done.min(total), total);
         // Never write paths that could escape the instance directory.
         if o.path.starts_with('/')
             || o.path.split('/').any(|c| c == ".." || c.is_empty())
@@ -233,12 +274,17 @@ pub async fn write_mrpack(
         {
             continue;
         }
-        zip.start_file(format!("overrides/{}", o.path), opts_z)?;
+        let opt = if o.path.ends_with(".jar") {
+            stored
+        } else {
+            deflated
+        };
+        zip.start_file(format!("overrides/{}", o.path), opt)?;
         zip.write_all(&o.origin.read()?)?;
         report.overrides += 1;
     }
     zip.finish()?;
-    Ok(report)
+    Ok(())
 }
 
 /// Open a file with the OS default handler (the Modrinth App registers `.mrpack`).
