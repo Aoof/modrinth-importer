@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-  import { api } from "./api";
+  import AdvancedOptions from "./AdvancedOptions.svelte";
+  import { api, pickSavePath } from "./api";
 
   let report = $state("");
   let checking = $state(false);
@@ -11,7 +11,7 @@
     checking = false;
   }
   async function saveLog() {
-    const out = await saveDialog({ defaultPath: "modrinth-importer-debug.log", filters: [{ name: "Log", extensions: ["log", "txt"] }] });
+    const out = await pickSavePath("modrinth-importer-debug.log", "log", "Log");
     if (!out) return;
     try { await api.saveDebugLog(out); msg = "Debug log saved. Attach it to your bug report."; } catch (e) { msg = String(e); }
   }
@@ -24,6 +24,7 @@
   let modrinth = $state("");
   let curseforge = $state("");
   let msg = $state("");
+  let keyWarning = $state("");
 
   const refresh = () => api.secretStatus().then((s) => (status = s));
   onMount(refresh);
@@ -32,9 +33,10 @@
     const v = kind === "modrinth" ? modrinth : curseforge;
     if (!v.trim()) return;
     try {
-      await api.saveSecret(kind, v.trim());
+      const warning = await api.saveSecret(kind, v.trim());
       if (kind === "modrinth") modrinth = ""; else curseforge = "";
       msg = "Saved to your system keychain.";
+      keyWarning = warning ?? "";
     } catch (e) { msg = String(e); }
     refresh();
   }
@@ -47,6 +49,7 @@
 <h1>Settings</h1>
 <p class="lede">Credentials are stored in your operating system's keychain, never in plain files.</p>
 {#if msg}<div class="notice ok">{msg}</div>{/if}
+{#if keyWarning}<div class="notice bad" role="alert"><b>Check this key.</b> {keyWarning}</div>{/if}
 
 <div class="card">
   <div class="row"><b>Modrinth token</b><span class="chip" class:ok={status.modrinth} class:dim={!status.modrinth}>{status.modrinth ? "Set" : "Not set"}</span></div>
@@ -60,13 +63,15 @@
 
 <div class="card">
   <div class="row"><b>CurseForge API key</b><span class="chip" class:ok={status.curseforge} class:dim={!status.curseforge}>{status.curseforge ? "Set" : "Not set"}</span></div>
-  <p class="muted">Needed to read CurseForge modpack zips and to migrate CurseForge projects. Get a free key at console.curseforge.com.</p>
+  <p class="muted">Needed for exact, 1:1 imports of CurseForge modpack zips and for migrating CurseForge projects. It must be a <b>Core API key</b> from console.curseforge.com (about 60 characters, starting with $2a$), not the author upload token from authors.curseforge.com. Without a key you can use the experimental keyless lookup below.</p>
   <div class="row">
     <input type="password" bind:value={curseforge} placeholder="API key" style="flex:1" />
     <button class="btn primary" onclick={() => save("curseforge")} disabled={!curseforge}>Save</button>
     {#if status.curseforge}<button class="btn" onclick={() => clear("curseforge")}>Remove</button>{/if}
   </div>
 </div>
+
+<AdvancedOptions />
 
 <div class="card">
   <b>Diagnostics</b>

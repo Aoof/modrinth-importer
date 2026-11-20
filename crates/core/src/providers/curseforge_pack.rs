@@ -3,9 +3,8 @@
 use super::{jarmeta, tree::Tree, LoadCtx, LoadOptions};
 use crate::hash::{sha1_hex, sha512_hex};
 use crate::model::*;
-use crate::{Error, Result};
+use crate::Result;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -44,10 +43,6 @@ pub fn is_manifest(t: &Tree) -> bool {
 
 pub async fn load(t: &Tree, opts: &LoadOptions, ctx: &LoadCtx) -> Result<ImportedPack> {
     let m: Manifest = t.read_json("manifest.json")?;
-    let cf = ctx.curseforge.as_ref().ok_or(Error::MissingCredential(
-        "CurseForge API key (set CURSEFORGE_API_KEY or run `mrimport auth curseforge`)",
-    ))?;
-
     let primary = m
         .minecraft
         .mod_loaders
@@ -64,45 +59,37 @@ pub async fn load(t: &Tree, opts: &LoadOptions, ctx: &LoadCtx) -> Result<Importe
         })
         .unwrap_or((Loader::Vanilla, None));
 
-    ctx.reporter.stage("Looking up files on CurseForge");
-    let ids: Vec<u64> = m.files.iter().map(|f| f.file_id).collect();
-    let mut cf_files = HashMap::new();
-    for chunk in ids.chunks(400) {
-        for f in cf.files(chunk).await? {
-            cf_files.insert(f.id, f);
-        }
-    }
-    let mod_ids: Vec<u64> = {
-        let mut v: Vec<u64> = m.files.iter().map(|f| f.project_id).collect();
-        v.sort_unstable();
-        v.dedup();
-        v
-    };
-    let mut cf_mods = HashMap::new();
-    for chunk in mod_ids.chunks(400) {
-        for x in cf.mods(chunk).await? {
-            cf_mods.insert(x.id, x);
-        }
+    let refs: Vec<CfRef> = m
+        .files
+        .iter()
+        .map(|f| CfRef {
+            project_id: f.project_id,
+            file_id: f.file_id,
+        })
+        .collect();
+    let outcome = ctx.lookup.files(&refs, &ctx.reporter).await?;
+    for w in &outcome.warnings {
+        ctx.reporter.log(w.clone());
     }
 
     let mut mods = vec![];
-    for f in &m.files {
-        let file = cf_files.get(&f.file_id);
-        let info = cf_mods.get(&f.project_id);
+    for r in &refs {
+        let info = outcome.infos.get(r);
         let mut e = ModEntry::new(
-            file.map(|x| x.file_name.clone())
-                .unwrap_or_else(|| format!("cf-{}-{}.jar", f.project_id, f.file_id)),
+            info.and_then(|i| i.file_name.clone())
+                .unwrap_or_else(|| format!("cf-{}-{}.jar", r.project_id, r.file_id)),
         );
-        e.cf = Some(CfRef {
-            project_id: f.project_id,
-            file_id: f.file_id,
-        });
-        e.name_hint = info.map(|i| i.name.clone());
-        e.slug_hint = info.map(|i| i.slug.clone());
-        if let Some(x) = file {
-            e.sha1 = x.sha1().map(String::from);
-            e.size = Some(x.file_length);
-            e.download_url = x.download_url.clone();
+        e.cf = Some(*r);
+        if let Some(i) = info {
+            e.expected_file_name = i.file_name.clone();
+            e.name_hint = i.project_name.clone();
+            e.slug_hint = i.slug.clone();
+            e.cf_url = i.project_url.clone();
+            e.sha1 = i.sha1.clone();
+            e.sha512 = i.sha512.clone();
+            e.size = i.size;
+            e.download_url = i.download_url.clone();
+            e.lookup_sources = i.sources.clone();
         }
         mods.push(e);
     }

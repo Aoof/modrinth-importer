@@ -6,11 +6,11 @@ Bring your mods and modpacks to [Modrinth](https://modrinth.com) from other prov
 
 ## What it does
 
-**Import packs (for players).** Point it at a pack and get a Modrinth `.mrpack` you can open in the Modrinth App. Every mod is matched to Modrinth by file hash first, then by name for the rest. Mods that Modrinth doesn't host can be bundled into the pack, and you get a report of what was skipped.
+**Import packs (for players).** Point it at a pack, paste a CurseForge modpack link, or search CurseForge by name, and get a Modrinth `.mrpack` you can open in the Modrinth App. A modpack is assumed not to exist on Modrinth, so only *exact* file matches use Modrinth. Every other mod is downloaded from its source and bundled, and anything that can't be downloaded is labelled with a link so you can supply the exact file. Name-matching to similar mods is an opt-in advanced setting. [How it works →](docs/curseforge.md)
 
 | Source | Input |
 | --- | --- |
-| CurseForge | modpack `.zip` (needs a free [API key](https://console.curseforge.com)) or a CurseForge app instance folder |
+| CurseForge | a modpack link, ID or name search (needs a Core API key), a modpack `.zip`, or an app instance folder |
 | Prism Launcher / MultiMC | instance folder or exported `.zip` |
 | ATLauncher | instance folder |
 | FTB App | instance folder (best effort) |
@@ -65,6 +65,10 @@ Add `--keep-data` (`-KeepData` on Windows) to keep settings and credentials. If 
 ## Quick start
 
 ```sh
+# Find a modpack on CurseForge and import it (needs a Core API key)
+mrimport search "all the mods"
+mrimport convert https://www.curseforge.com/minecraft/modpacks/all-the-mods-10 --open
+
 # What's in this pack?
 mrimport inspect ~/Downloads/MyPack.zip
 
@@ -79,11 +83,11 @@ mrimport publish github me/my-mod --slug my-mod --title "My Mod" \
   --summary "Does a thing" --license MIT --loaders fabric --dry-run
 ```
 
-In the desktop app, drop a pack onto the window, review the matches, and export.
+In the desktop app, drop a pack onto the window (or use *Find a modpack on CurseForge*), review the matches, supply any files it asks for, and export.
 
 Credentials: `mrimport auth modrinth` and `mrimport auth curseforge` store them in your OS keychain. `MODRINTH_TOKEN` and `CURSEFORGE_API_KEY` environment variables also work (useful in CI).
 
-More: [CLI reference](docs/cli.md) · [Providers](docs/providers.md) · [Publishing](docs/publishing.md) · [How matching works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [FAQ](docs/faq.md)
+More: [CurseForge](docs/curseforge.md) · [CLI reference](docs/cli.md) · [Providers](docs/providers.md) · [Publishing](docs/publishing.md) · [How matching works](docs/architecture.md) · [Troubleshooting](docs/troubleshooting.md) · [FAQ](docs/faq.md)
 
 ## Build from source
 

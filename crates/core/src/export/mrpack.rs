@@ -28,7 +28,7 @@ impl Default for ExportOptions {
     fn default() -> Self {
         Self {
             bundle_unmatched: true,
-            download_remote: false,
+            download_remote: true,
             loader_version: None,
         }
     }
@@ -38,6 +38,9 @@ impl Default for ExportOptions {
 pub struct Skipped {
     pub file_name: String,
     pub reason: String,
+    /// Where to download the file manually (CurseForge page), when applicable.
+    #[serde(default)]
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -59,7 +62,11 @@ impl ExportReport {
         if !self.skipped.is_empty() {
             s.push_str("\n## Skipped mods\n\n");
             for x in &self.skipped {
-                s.push_str(&format!("- `{}` — {}\n", x.file_name, x.reason));
+                s.push_str(&format!("- `{}` — {}", x.file_name, x.reason));
+                if let Some(l) = &x.link {
+                    s.push_str(&format!(" — [download page]({l})"));
+                }
+                s.push('\n');
             }
         }
         if !self.bundled.is_empty() {
@@ -165,14 +172,29 @@ pub async fn write_mrpack(
                     None
                 };
                 match bytes {
-                    Some(b) if used_paths.insert(format!("mods/{}", e.file_name)) => {
-                        report.bundled.push(e.file_name.clone());
-                        bundled.push((format!("overrides/mods/{}", e.file_name), b));
+                    Some(b) => {
+                        let name = bundle_name(e, &b);
+                        if used_paths.insert(format!("mods/{name}")) {
+                            report.bundled.push(name.clone());
+                            bundled.push((format!("overrides/mods/{name}"), b));
+                        }
                     }
-                    _ => report.skipped.push(Skipped {
-                        file_name: e.file_name.clone(),
-                        reason,
-                    }),
+                    None => {
+                        // A CurseForge mod we could not fetch: point at the page to download it from.
+                        let manual = crate::manual::task(e).filter(|_| e.origin.is_none());
+                        let (reason, link) = match manual {
+                            Some(t) => (
+                                format!("needs a manual download ({reason})"),
+                                Some(t.file_url.unwrap_or(t.project_url)),
+                            ),
+                            None => (reason, None),
+                        };
+                        report.skipped.push(Skipped {
+                            file_name: e.display_name(),
+                            reason,
+                            link,
+                        })
+                    }
                 }
             }
         }
@@ -237,5 +259,19 @@ pub fn open_with_default_app(path: &Path) -> Result<()> {
         Err(Error::Invalid(
             "could not open the file with the default application".into(),
         ))
+    }
+}
+
+/// File name for a bundled jar. CurseForge entries whose real name is unknown only have a
+/// `cf-<project>-<file>.jar` placeholder; replace it with something descriptive.
+fn bundle_name(e: &ModEntry, bytes: &[u8]) -> String {
+    match e.cf {
+        Some(cf) if e.expected_file_name.is_none() && e.file_name.starts_with("cf-") => {
+            let id = crate::providers::jarmeta::inspect(bytes)
+                .mod_id
+                .unwrap_or_else(|| "mod".into());
+            format!("{id}-cf{}.jar", cf.file_id)
+        }
+        _ => e.file_name.clone(),
     }
 }

@@ -7,7 +7,7 @@ use crate::modrinth::Modrinth;
 
 /// Run connectivity and credential checks and return a human-readable report.
 /// Everything is also written to the debug log. Secrets are described, never shown.
-pub async fn run(mr: &Modrinth) -> String {
+pub async fn run(mr: &Modrinth, keyless: bool) -> String {
     let mut out = vec![format!(
         "Modrinth Importer {} on {} {}",
         env!("CARGO_PKG_VERSION"),
@@ -43,8 +43,39 @@ pub async fn run(mr: &Modrinth) -> String {
         }
     }
 
+    if keyless {
+        out.push(match keyless_ping().await {
+            Ok(()) => "Keyless lookup: ON (cursemaven.com reachable)".into(),
+            Err(e) => format!("Keyless lookup: ON, but cursemaven.com is not reachable ({e})"),
+        });
+    } else {
+        out.push(
+            "Keyless lookup: off (experimental opt-in that works without a CurseForge key)".into(),
+        );
+    }
+
     for line in &out {
         debuglog::log(format!("doctor: {line}"));
     }
     out.join("\n")
+}
+
+/// HEAD request for a well-known file; confirms the keyless service is reachable.
+async fn keyless_ping() -> Result<(), String> {
+    let url = format!(
+        "{}/curse/maven/x-238222/9701664/x-238222-9701664.jar",
+        crate::cflookup::CURSEMAVEN_BASE
+    );
+    let http = reqwest::Client::builder()
+        .user_agent(crate::user_agent())
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let r = http.head(&url).send().await.map_err(|e| e.to_string())?;
+    debuglog::log(format!("doctor: HEAD {url} -> {}", r.status().as_u16()));
+    if r.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("HTTP {}", r.status().as_u16()))
+    }
 }

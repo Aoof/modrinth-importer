@@ -330,7 +330,7 @@ pub async fn publish(
     for r in &plan.releases {
         if r.game_versions.is_empty() || r.loaders.is_empty() {
             return Err(Error::Invalid(format!(
-                "release '{}' needs game versions and loaders (pass --game-versions / --loaders)",
+                "release '{}' needs Minecraft versions and loaders; fill in both",
                 r.version_number
             )));
         }

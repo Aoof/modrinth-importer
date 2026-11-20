@@ -31,16 +31,13 @@ impl Secret {
     }
 }
 
+/// `MRIMPORT_NO_KEYCHAIN=1` skips the OS keychain entirely (containers, CI, tests).
+fn keychain_disabled() -> bool {
+    std::env::var("MRIMPORT_NO_KEYCHAIN").is_ok_and(|v| !v.is_empty() && v != "0")
+}
+
 pub fn get_secret(s: Secret) -> Option<String> {
-    if let Ok(v) = std::env::var(s.env()) {
-        if !v.trim().is_empty() {
-            return Some(v);
-        }
-    }
-    keyring::Entry::new(SERVICE, s.account())
-        .ok()?
-        .get_password()
-        .ok()
+    secret_source(s).map(|(v, _)| v)
 }
 
 /// Like [`get_secret`], also reporting where the value came from.
@@ -49,6 +46,9 @@ pub fn secret_source(s: Secret) -> Option<(String, &'static str)> {
         if !v.trim().is_empty() {
             return Some((v, "environment variable"));
         }
+    }
+    if keychain_disabled() {
+        return None;
     }
     keyring::Entry::new(SERVICE, s.account())
         .ok()?
@@ -77,6 +77,70 @@ pub struct Settings {
     /// Bundle unmatched mods as overrides when a jar is available.
     #[serde(default = "yes")]
     pub bundle_unmatched: bool,
+    /// Opt-in: when no (working) CurseForge API key is available, look mods up
+    /// through community services (cursemaven.com, api.cfwidget.com).
+    #[serde(default)]
+    pub keyless_lookup: bool,
+    /// Advanced, off by default: when a mod isn't an exact match on Modrinth, search for a
+    /// *similar* project/version by name. Packs are assumed not to exist on Modrinth, so by
+    /// default only exact (hash) matches are used.
+    #[serde(default)]
+    pub match_by_name: bool,
+    /// Advanced, on by default: download mods that aren't an exact match on Modrinth from their
+    /// original source (CurseForge) and bundle them in the pack.
+    #[serde(default = "yes")]
+    pub download_unmatched: bool,
+}
+
+/// One advanced setting as shown to people (CLI `config show`, app Advanced options).
+pub struct SettingInfo {
+    pub key: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+    pub value: bool,
+}
+
+impl Settings {
+    pub fn describe(&self) -> Vec<SettingInfo> {
+        vec![
+            SettingInfo {
+                key: "download",
+                title: "Download mods that aren't on Modrinth",
+                description: "Mods without an exact match on Modrinth are downloaded from their original source (CurseForge) and bundled in the pack. If one can't be downloaded you are asked to supply it.",
+                value: self.download_unmatched,
+            },
+            SettingInfo {
+                key: "bundle",
+                title: "Bundle files that aren't on Modrinth",
+                description: "Put those files (and any you supply by hand) inside the pack. Turn off to list them in the report instead.",
+                value: self.bundle_unmatched,
+            },
+            SettingInfo {
+                key: "match-by-name",
+                title: "Match by name when there is no exact match",
+                description: "Search Modrinth for a similar mod and use its newest compatible version. This substitutes different files, so it is off by default: a modpack is assumed not to exist on Modrinth.",
+                value: self.match_by_name,
+            },
+            SettingInfo {
+                key: "keyless",
+                title: "Keyless CurseForge lookup (experimental)",
+                description: "Without a working CurseForge API key, look files up through the community services cursemaven.com and api.cfwidget.com. Your pack's CurseForge project and file IDs are sent to them.",
+                value: self.keyless_lookup,
+            },
+        ]
+    }
+
+    /// Set a setting by its CLI/app key. Returns false for an unknown key.
+    pub fn set(&mut self, key: &str, value: bool) -> bool {
+        match key {
+            "download" => self.download_unmatched = value,
+            "bundle" => self.bundle_unmatched = value,
+            "match-by-name" => self.match_by_name = value,
+            "keyless" => self.keyless_lookup = value,
+            _ => return false,
+        }
+        true
+    }
 }
 
 fn yes() -> bool {
@@ -100,6 +164,9 @@ impl Default for Settings {
         Self {
             modrinth_app_dir: None,
             bundle_unmatched: true,
+            keyless_lookup: false,
+            match_by_name: false,
+            download_unmatched: true,
         }
     }
 }
@@ -218,4 +285,10 @@ pub fn purge_secrets() -> usize {
                 .unwrap_or(false)
         })
         .count()
+}
+
+/// Cache directory for small lookup caches (file hashes). Removed by `purge`.
+pub fn cache_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("com", "Aoof", "ModrinthImporter")
+        .map(|d| d.cache_dir().to_path_buf())
 }
