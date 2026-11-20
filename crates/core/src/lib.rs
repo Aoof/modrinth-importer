@@ -5,6 +5,8 @@
 //! `.mrpack` or a Modrinth App profile ([`export`]). Creators can also
 //! **publish** projects to Modrinth ([`publish`]).
 
+pub mod cflookup;
+pub mod cfmodpack;
 pub mod config;
 pub mod curseforge;
 pub mod debuglog;
@@ -12,7 +14,9 @@ pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod export;
+pub mod fetch;
 pub mod hash;
+pub mod manual;
 pub mod model;
 pub mod modrinth;
 pub mod providers;

@@ -26,6 +26,9 @@ pub enum Error {
     Invalid(String),
     #[error("missing credential: {0}")]
     MissingCredential(&'static str),
+    /// The author doesn't allow downloads outside CurseForge: a person has to fetch the file.
+    #[error("'{name}' can't be downloaded automatically (the author only allows downloads on CurseForge). Download it in your browser from {url} and open the .zip here.")]
+    NeedsManualDownload { name: String, url: String },
 }
 
 impl Error {
@@ -33,10 +36,12 @@ impl Error {
     pub fn api(provider: &'static str, status: u16, body: String) -> Self {
         let hint = match (provider, status) {
             ("CurseForge", 401 | 403) => Some(
-                "CurseForge rejected the API key. Check that the key is valid and copied in full: \
-                 it is ~60 characters starting with $2a$, and shells expand the $ parts unless the \
-                 key is in single quotes. Re-save it with `mrimport auth curseforge` (paste when \
-                 prompted) or in Settings. Run `mrimport doctor` for a full check.",
+                "CurseForge rejected the API key. It must be a Core API key from \
+                 console.curseforge.com (about 60 characters starting with $2a$), not an author \
+                 upload token from authors.curseforge.com (which looks like xxxxxxxx-xxxx-…). \
+                 Shells also expand the $ parts unless the key is in single quotes. Re-save it \
+                 with `mrimport auth curseforge` (paste when prompted) or in Settings. Run \
+                 `mrimport doctor` for a full check, or enable keyless lookup (experimental).",
             ),
             ("Modrinth", 401) => Some("Modrinth rejected the token. Create a new personal access token and run `mrimport auth modrinth`."),
             (_, 429) => Some("Rate limited; wait a minute and try again."),

@@ -1,13 +1,13 @@
 # FAQ
 
-**Why were some mods "matched by name"?**
-Modrinth didn't have the identical jar, so the newest compatible release was used. Review those in the app (they're marked *By name*) or in the report.
+**Why isn't a mod on Modrinth used?**
+Only a file that is *identical* to one on Modrinth (same hash) is taken from there. A modpack is assumed not to exist on Modrinth, so the other mods are downloaded from their source and bundled in the pack rather than swapped for similar ones. *Match by name* (advanced, off by default) searches Modrinth for a similar mod instead; those matches are marked *By name* and are not the same file.
 
 **Why do I need a CurseForge API key?**
-CurseForge modpack zips only list project and file IDs. Their API is the only way to learn the file names and hashes. Keys are free at <https://console.curseforge.com>. Instance folders and other sources don't need one.
+A CurseForge modpack `.zip` only lists numeric project and file IDs. The Core API turns them into file names, hashes and download links, which is what makes the import exact. Keys are free at <https://console.curseforge.com> (CurseForge may ask third-party tools to apply). Without a key you can import a downloaded `.zip` using the experimental *keyless lookup*, or other sources, which need no key. Search and link import need the key. See [Importing from CurseForge](curseforge.md).
 
-**Some mods were skipped.**
-They aren't on Modrinth and no jar was available to bundle (or bundling was off). The report lists them. Bundling third-party mods may need the author's permission, so `--download-remote` is opt-in.
+**Some mods say "Needs your file".**
+They aren't on Modrinth and couldn't be downloaded (for example the author restricts downloads to CurseForge). Open the link, download the exact file, and drop it on the app (or use `--mods-dir`). The file is verified against the exact one the pack asks for. Mods you leave out are listed in the report with their links.
 
 **Can it install the pack for me?**
 `--open` / "Open in Modrinth App" hands the `.mrpack` to the Modrinth App, which creates the instance. Direct writes into the app's database aren't attempted because that format is internal.
