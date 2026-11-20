@@ -415,6 +415,7 @@ mod unix {
     use super::*;
     use std::process::Command;
 
+    #[cfg(target_os = "macos")]
     fn run(cmd: &mut Command, what: &str) -> Result<()> {
         let st = cmd.status().map_err(|e| io_err(what, e))?;
         if st.success() {
