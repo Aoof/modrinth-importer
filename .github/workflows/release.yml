@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       skip: ${{ steps.v.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: v
         run: bash scripts/next-version.sh >> "$GITHUB_OUTPUT"
@@ -46,7 +46,7 @@ jobs:
           - { os: windows-latest,   target: x86_64-pc-windows-msvc,    gui: windows-x64,     bundle: nsis }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "${{ matrix.target }}" }
       - uses: Swatinem/rust-cache@v2
@@ -118,7 +118,7 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: actions/download-artifact@v8
         with: { path: dist, pattern: "assets-*", merge-multiple: true }
