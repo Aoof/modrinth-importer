@@ -70,6 +70,7 @@ export interface FileOption {
 }
 export interface ModpackDetail extends ModpackHit { files: FileOption[]; selected_file_id: number }
 export interface FetchOutcome { path: string | null; manual_url: string | null; message: string }
+export interface UpdateInfo { version: string; current: string }
 export interface Setting { key: string; title: string; description: string; value: boolean }
 export type ProgressEvent =
   | { kind: "stage"; name: string }
@@ -113,6 +114,8 @@ export const api = {
   cfResolve: (input: string) => invoke<ModpackDetail>("cf_resolve", { input }),
   cfFetch: (projectId: number, fileId: number, onEvent: (e: ProgressEvent) => void) =>
     invoke<FetchOutcome>("cf_fetch", { projectId, fileId, onEvent: channel(onEvent) }),
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  installUpdate: (onEvent: (e: ProgressEvent) => void) => invoke<void>("install_update", { onEvent: channel(onEvent) }),
   discardScan: () => invoke<void>("discard_scan"),
   openPath: (path: string) => invoke<void>("open_path", { path }),
   openLink: (url: string) => invoke<void>("open_link", { url }),

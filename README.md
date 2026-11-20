@@ -44,7 +44,7 @@ The installers verify SHA-256 checksums and put things where each OS expects the
 
 Options: `--cli-only`, `--gui-only`, `--version X.Y.Z`, `--system` (CLI to `/usr/local/bin`), `--uninstall`, `--keep-data`. Pass them as `sh -s -- --cli-only` when piping, or download the script first. Prefer manual installs? Grab files from [Releases](https://github.com/Aoof/modrinth-importer/releases).
 
-Update the CLI with `mrimport self-update`. To update the desktop app, run the installer again.
+Update with `mrimport self-update` (CLI and desktop app, checksum-verified). The desktop app also checks when it opens and offers to restart into the new version.
 
 > **Developer builds.** Every release is currently marked as a pre-release: the macOS app isn't notarized and the Windows installer isn't signed. The macOS installer seals the app with a local signature so it opens cleanly; see the [FAQ](docs/faq.md) for first-launch prompts when downloading manually.
 

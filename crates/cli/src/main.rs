@@ -94,6 +94,12 @@ enum Cmd {
         /// Only check, don't install.
         #[arg(long)]
         check: bool,
+        /// Update only the CLI, not the desktop app.
+        #[arg(long, conflicts_with = "gui_only")]
+        cli_only: bool,
+        /// Reinstall only the desktop app.
+        #[arg(long)]
+        gui_only: bool,
     },
 }
 
@@ -372,7 +378,18 @@ async fn run() -> Result<()> {
         Cmd::Config { action } => config_cmd(action),
         Cmd::Doctor => doctor(&cli).await,
         Cmd::Purge { yes, dry_run } => purge(*yes, *dry_run),
-        Cmd::SelfUpdate { check } => update::run(*check).await,
+        Cmd::SelfUpdate {
+            check,
+            cli_only,
+            gui_only,
+        } => {
+            update::run(update::Options {
+                check_only: *check,
+                cli_only: *cli_only,
+                gui_only: *gui_only,
+            })
+            .await
+        }
     }
 }
 

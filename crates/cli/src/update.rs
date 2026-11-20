@@ -1,101 +1,89 @@
-//! `mrimport self-update`: replace this executable with the latest release binary,
-//! after verifying its SHA-256 against the release's `SHA256SUMS`.
+//! `mrimport self-update`: the same steps as the installers. Every download is verified against
+//! the release's `SHA256SUMS` first; only then are the old files removed and the new ones
+//! installed. Settings and credentials are never touched.
 
 use anyhow::{bail, Context, Result};
-use sha2::{Digest, Sha256};
+use mrimport_core::{events::Reporter, update};
 
-const REPO: &str = "Aoof/modrinth-importer";
+pub struct Options {
+    pub check_only: bool,
+    pub cli_only: bool,
+    pub gui_only: bool,
+}
 
-pub async fn run(check_only: bool) -> Result<()> {
+pub async fn run(o: Options) -> Result<()> {
     let target = env!("MRIMPORT_TARGET");
-    let ext = if target.contains("windows") {
-        ".exe"
-    } else {
-        ""
-    };
-    let asset = format!("mrimport-{target}{ext}");
-    let http = reqwest::Client::builder()
-        .user_agent(mrimport_core::user_agent())
-        .build()?;
+    let exe = std::env::current_exe()?;
+    update::cleanup_leftovers(&exe);
 
-    // Releases are pre-releases, which `/releases/latest` skips; take the newest entry.
-    let releases: Vec<serde_json::Value> = http
-        .get(format!(
-            "https://api.github.com/repos/{REPO}/releases?per_page=1"
-        ))
-        .send()
-        .await?
-        .error_for_status()
-        .context("could not fetch the latest release")?
-        .json()
-        .await?;
-    let rel = releases.into_iter().next().context("no releases found")?;
-    let tag = rel["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .trim_start_matches('v')
-        .to_string();
+    let http = update::client()?;
+    let rel = update::latest(&http)
+        .await
+        .context("could not fetch the latest release")?;
     let current = env!("CARGO_PKG_VERSION");
-    if tag == current {
+    if !o.gui_only && !update::is_newer(&rel.version, current) {
         println!("Already up to date ({current}).");
         return Ok(());
     }
-    println!("New version available: {tag} (current {current})");
-    if check_only {
+    println!("New version available: {} (current {current})", rel.version);
+    if o.check_only {
         return Ok(());
     }
 
-    let find = |name: &str| {
-        rel["assets"]
-            .as_array()
-            .and_then(|a| a.iter().find(|x| x["name"] == name))
-            .and_then(|x| x["browser_download_url"].as_str().map(String::from))
+    let gui = if o.cli_only {
+        None
+    } else {
+        update::installed_gui()
     };
-    let url = find(&asset).with_context(|| format!("release has no asset named {asset}"))?;
-    let sums_url = find("SHA256SUMS").context("release has no SHA256SUMS")?;
-    let sums = http
-        .get(sums_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-    let expected = sums
-        .lines()
-        .find_map(|l| {
-            let (h, n) = l.split_once(char::is_whitespace)?;
-            (n.trim().trim_start_matches('*') == asset).then(|| h.to_string())
-        })
-        .context("asset missing from SHA256SUMS")?;
-
-    let bytes = http
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
-    let actual = hex::encode(Sha256::digest(&bytes));
-    if actual != expected {
-        bail!("checksum mismatch for {asset}; refusing to install");
+    if o.gui_only && gui.is_none() {
+        bail!("the desktop app isn't installed");
     }
 
-    let exe = std::env::current_exe()?;
-    let tmp = exe.with_extension("new");
-    std::fs::write(&tmp, &bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    // 1. Download and verify everything before changing anything.
+    let tmp = std::env::temp_dir().join(format!("mrimport-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let rep = progress();
+    let result = async {
+        let cli = if o.gui_only {
+            None
+        } else {
+            Some(
+                update::download_verified(&http, &rel, &update::cli_asset(target), &tmp, &rep)
+                    .await?,
+            )
+        };
+        let setup = match (&gui, update::gui_asset()) {
+            (Some(_), Some(asset)) => {
+                Some(update::download_verified(&http, &rel, &asset, &tmp, &rep).await?)
+            }
+            (Some(_), None) => bail!("no desktop app build exists for this platform"),
+            _ => None,
+        };
+        println!("Checksums verified.");
+
+        // 2. Remove the old program files and install the new ones.
+        if let Some(cli) = cli {
+            update::replace_cli(&cli, &exe)?;
+            println!("Updated the CLI to {}.", rel.version);
+        }
+        if let (Some(old), Some(setup)) = (&gui, &setup) {
+            println!("Reinstalling the desktop app...");
+            update::install_gui(setup, old, false, None)?;
+            println!("Updated the desktop app to {}.", rel.version);
+        }
+        anyhow::Ok(())
     }
-    if cfg!(windows) {
-        // A running .exe can be renamed but not overwritten.
-        let old = exe.with_extension("old");
-        let _ = std::fs::remove_file(&old);
-        std::fs::rename(&exe, &old)?;
-    }
-    std::fs::rename(&tmp, &exe)
-        .context("could not replace the executable (try with sufficient permissions)")?;
-    println!("Updated to {tag}.");
+    .await;
+    let _ = std::fs::remove_dir_all(&tmp);
+    result?;
+    println!("Done.");
     Ok(())
+}
+
+fn progress() -> Reporter {
+    Reporter::new(|e| {
+        if let mrimport_core::events::Event::Stage { name } = e {
+            println!("{name}...");
+        }
+    })
 }

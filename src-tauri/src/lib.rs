@@ -14,6 +14,7 @@ use mrimport_core::{
     providers::{self, LoadCtx, LoadOptions},
     publish::{self, ProjectSpec, PublishPlan, PublishReport, ReleaseDefaults},
     resolve::{self, ResolvedMod},
+    update,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -662,6 +663,55 @@ fn debug_log_text() -> String {
     mrimport_core::debuglog::snapshot()
 }
 
+// ---------------------------------------------------------------------------------------------
+// Updates: checked when the app opens; installing is always the user's choice.
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct UpdateInfo {
+    version: String,
+    current: String,
+}
+
+/// A newer release, if there is one and this install can update itself (the installed app, not a
+/// development build). Network problems are not errors: the app just doesn't offer anything.
+#[tauri::command]
+async fn check_update() -> Option<UpdateInfo> {
+    let exe = std::env::current_exe().ok()?;
+    update::running_gui(&exe)?;
+    update::gui_asset()?;
+    let rel = update::latest(&update::client().ok()?).await.ok()?;
+    let current = env!("CARGO_PKG_VERSION");
+    update::is_newer(&rel.version, current).then(|| UpdateInfo {
+        version: rel.version,
+        current: current.into(),
+    })
+}
+
+/// Download and verify the newest installer, then hand over to it: the old app is uninstalled,
+/// the new one installed and started, and this process exits.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, on_event: Channel<Event>) -> CmdResult<()> {
+    let exe = std::env::current_exe().map_err(err)?;
+    let old = update::running_gui(&exe).ok_or(
+        "this copy of the app was not installed by the installer, so it can't update itself",
+    )?;
+    let asset = update::gui_asset().ok_or("no build exists for this platform")?;
+    let http = update::client().map_err(err)?;
+    let rel = update::latest(&http).await.map_err(err)?;
+    let dir = std::env::temp_dir().join(format!("mrimport-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let setup = update::download_verified(&http, &rel, &asset, &dir, &reporter(on_event))
+        .await
+        .map_err(|e| {
+            let _ = std::fs::remove_dir_all(&dir);
+            err(e)
+        })?;
+    update::install_gui(&setup, &old, true, Some(std::process::id())).map_err(err)?;
+    app.exit(0);
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -684,7 +734,9 @@ pub fn run() {
             discard_scan,
             cf_search,
             cf_resolve,
-            cf_fetch
+            cf_fetch,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running Modrinth Importer");
