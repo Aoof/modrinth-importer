@@ -29,6 +29,7 @@
   let manualResults = $state<ManualResult[]>([]);
   let downloads = $state<string | null>(null);
   let busyManual = $state(false);
+  let hasKey = $state(true);
 
   const onEvent = (e: ProgressEvent) => {
     if (e.kind === "stage") { stage = e.name; done = 0; total = 0; }
@@ -37,6 +38,7 @@
 
   onMount(() => {
     api.defaultDownloadsDir().then((d) => (downloads = d)).catch(() => {});
+    api.secretStatus().then((s) => (hasKey = s.curseforge)).catch(() => {});
     if (!isTauri) return;
     let un: (() => void) | undefined;
     getCurrentWebview()
@@ -133,7 +135,8 @@
   const exactnessText = (t: ManualTask) =>
     t.exactness === "hash" ? "exact SHA-1 check"
     : t.exactness === "file_name" ? "exact file-name check"
-    : "can't be verified without a CurseForge API key";
+    : hasKey ? "no hash or file name is known for it, so it can't be verified"
+    : "can't be verified; add a CurseForge API key in Settings for exact checks";
 
   // ---- export --------------------------------------------------------------
   async function doExport() {

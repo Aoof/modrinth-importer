@@ -527,6 +527,27 @@ struct FetchOutcome {
     message: String,
 }
 
+/// The last project looked up, with its files, so importing a version needn't ask CurseForge again.
+type LastLookup = Option<(
+    mrimport_core::curseforge::CfModpack,
+    Vec<mrimport_core::curseforge::CfProjectFile>,
+)>;
+static LAST_LOOKUP: std::sync::Mutex<LastLookup> = std::sync::Mutex::new(None);
+
+/// A previously looked-up file, if it belongs to `project_id`.
+fn cached_selection(
+    cache: &LastLookup,
+    project_id: u64,
+    file_id: u64,
+) -> Option<cfmodpack::Selected> {
+    let (project, files) = cache.as_ref().filter(|(p, _)| p.id == project_id)?;
+    let file = files.iter().find(|f| f.id == file_id)?;
+    Some(cfmodpack::Selected {
+        project: project.clone(),
+        file: file.clone(),
+    })
+}
+
 fn core_client() -> CmdResult<CurseForge> {
     config::get_secret(Secret::CurseForgeKey)
         .map(CurseForge::new)
@@ -565,6 +586,7 @@ async fn cf_resolve(input: String) -> CmdResult<ModpackDetail> {
     if !files.iter().any(|x| x.id == sel.file.id) {
         files.push(sel.file.clone());
     }
+    *LAST_LOOKUP.lock().unwrap() = Some((sel.project.clone(), files.clone()));
     files.retain(|f| f.is_server_pack != Some(true));
     files.sort_by(|a, b| b.file_date.cmp(&a.file_date).then(b.id.cmp(&a.id)));
     Ok(ModpackDetail {
@@ -592,15 +614,19 @@ async fn cf_fetch(
     on_event: Channel<Event>,
 ) -> CmdResult<FetchOutcome> {
     let cf = core_client()?;
-    let sel = cfmodpack::resolve(
-        &cf,
-        &cfmodpack::ModpackRef::Id {
-            project_id,
-            file_id: Some(file_id),
-        },
-    )
-    .await
-    .map_err(err)?;
+    let cached = cached_selection(&LAST_LOOKUP.lock().unwrap(), project_id, file_id);
+    let sel = match cached {
+        Some(sel) => sel,
+        None => cfmodpack::resolve(
+            &cf,
+            &cfmodpack::ModpackRef::Id {
+                project_id,
+                file_id: Some(file_id),
+            },
+        )
+        .await
+        .map_err(err)?,
+    };
     let _ = std::fs::remove_dir_all(modpacks_dir());
     match cfmodpack::download(&cf, &sel, &modpacks_dir(), &reporter(on_event)).await {
         Ok(p) => Ok(FetchOutcome {
@@ -662,4 +688,54 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Modrinth Importer");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mrimport_core::curseforge::{CfModpack, CfProjectFile};
+
+    fn project(id: u64) -> CfModpack {
+        serde_json::from_value(serde_json::json!({"id": id, "name": "P", "slug": "p"})).unwrap()
+    }
+    fn file(id: u64) -> CfProjectFile {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "fileName": "f.zip", "displayName": "f", "downloadUrl": null, "releaseType": 1
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_cached_file_is_only_used_for_its_own_project() {
+        let cache: LastLookup = Some((project(7), vec![file(1), file(2)]));
+        assert_eq!(cached_selection(&cache, 7, 2).unwrap().file.id, 2);
+        assert!(
+            cached_selection(&cache, 7, 99).is_none(),
+            "unknown file falls back to a fresh lookup"
+        );
+        assert!(
+            cached_selection(&cache, 8, 1).is_none(),
+            "another project must not reuse the cache"
+        );
+        assert!(cached_selection(&None, 7, 1).is_none());
+    }
+
+    /// Search-result thumbnails come from CurseForge's image host; the webview's policy must allow it.
+    #[test]
+    fn the_content_security_policy_allows_curseforge_thumbnails_and_nothing_wild() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        let img = csp
+            .split(';')
+            .map(str::trim)
+            .find(|d| d.starts_with("img-src"))
+            .unwrap();
+        assert!(img.contains("https://*.forgecdn.net"), "{img}");
+        assert!(
+            !img.contains(" * ") && !img.ends_with(" *") && !img.contains("http:"),
+            "{img}"
+        );
+        assert!(csp.contains("default-src 'self'"));
+    }
 }

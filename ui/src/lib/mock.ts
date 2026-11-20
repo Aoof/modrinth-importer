@@ -70,7 +70,7 @@ function applyManual(resolved: ResolvedMod[], files: { path: string; index: numb
     let verdict: ManualResult["verdict"]; let msg: string; let ok = false;
     if (expected && clean === expected) { verdict = { kind: "exact_file_name" }; msg = "exact file (file name matches CurseForge)"; ok = true; }
     else if (expected) { verdict = { kind: "mismatch", reason: `expected the file '${expected}' but this is '${clean}'` }; ok = force; msg = (ok ? "accepted anyway: " : "rejected: ") + (verdict as { reason: string }).reason; }
-    else { verdict = { kind: "unverified", note: "The exact mod and version can't be confirmed without a CurseForge API key." }; ok = acceptUnverified; msg = (ok ? "accepted unverified. " : "not accepted yet. ") + verdict.note; }
+    else { verdict = { kind: "unverified", note: "The exact mod and version can't be confirmed: no hash or file name is known for this file." }; ok = acceptUnverified; msg = (ok ? "accepted unverified. " : "not accepted yet. ") + verdict.note; }
     if (ok) { e.origin = { type: "file", path: f.path }; e.file_name = expected ?? clean; }
     results.push({ path: f.path, file_name: name, index: idx, mod_name: e.name_hint ?? `CurseForge project ${e.cf?.project_id}`, verdict, applied: ok, on_modrinth: false, message: msg });
   }

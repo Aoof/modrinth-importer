@@ -619,7 +619,16 @@ async fn publish_cmd(cli: &Cli, a: &PublishArgs) -> Result<()> {
         releases,
     };
     let mr = modrinth(&cli.api_base, !common.dry_run)?;
-    let report = publish::publish(&plan, &mr, common.dry_run, &rep).await?;
+    let report = publish::publish(&plan, &mr, common.dry_run, &rep)
+        .await
+        .map_err(|e| {
+            let m = e.to_string();
+            if m.contains("needs Minecraft versions") {
+                anyhow::anyhow!("{m} (pass --game-versions and --loaders)")
+            } else {
+                e.into()
+            }
+        })?;
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -779,7 +788,7 @@ fn short(items: &[(usize, manual::ManualTask)]) -> String {
         let want = match (&t.expected_file_name, t.exactness) {
             (Some(f), manual::Exactness::Hash) => format!("{f} (exact SHA-1 check)"),
             (Some(f), _) => format!("{f} (exact file-name check)"),
-            (None, _) => "file name unknown (can't be verified without a CurseForge key)".into(),
+            (None, _) => "file name unknown, so it can't be verified".into(),
         };
         out.push_str(&format!(
             "  - {name}: {want}\n      {}\n",

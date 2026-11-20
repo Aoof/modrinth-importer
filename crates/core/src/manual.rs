@@ -152,9 +152,9 @@ pub fn verify(entry: &ModEntry, supplied_name: &str, bytes: &[u8]) -> Verdict {
         });
     Verdict::Unverified {
         note: if same_mod {
-            "It is the same mod, but the exact version can't be confirmed without a CurseForge API key."
+            "It looks like the same mod, but its exact version can't be confirmed: no hash or file name is known for this file."
         } else {
-            "The exact mod and version can't be confirmed without a CurseForge API key."
+            "The exact mod and version can't be confirmed: no hash or file name is known for this file."
         }
         .into(),
     }
